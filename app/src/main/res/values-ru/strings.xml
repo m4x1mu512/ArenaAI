@@ -1,0 +1,117 @@
+<resources>
+    <string name="app_name">Coarena Chat</string>
+
+    <!-- Setup Screen -->
+    <string name="setup_title">Подключение к Coarena</string>
+    <string name="setup_subtitle">Введите ваш личный API-ключ Coarena и URL сервера, чтобы начать общение с моделями.</string>
+    <string name="setup_hero_cd">Иллюстрация Coarena Chat</string>
+    <string name="setup_api_key_label">Coarena API key</string>
+    <string name="setup_api_key_placeholder">sk-…</string>
+    <string name="setup_api_key_show_cd">Показать ключ</string>
+    <string name="setup_api_key_hide_cd">Скрыть ключ</string>
+    <string name="setup_api_key_clear_cd">Очистить поле ключа</string>
+    <string name="setup_key_hint_title">Где получить API-ключ</string>
+    <string name="setup_key_hint_body">Создайте или скопируйте ключ в личном кабинете Coarena:</string>
+    <string name="setup_key_hint_url">https://coarena.ai/account/api</string>
+    <string name="setup_key_privacy_note">Ключ шифруется через Android Keystore и хранится только локально на устройстве. Он никогда не попадает в логи, аналитику или отчёты об ошибках.</string>
+    <string name="setup_base_url_label">Base URL</string>
+    <string name="setup_base_url_helper">По умолчанию: https://coarena.ai/api/v1</string>
+    <string name="setup_reset_url">Сбросить</string>
+    <string name="setup_test_connection">Проверить подключение</string>
+    <string name="setup_testing_connection">Проверка…</string>
+    <string name="setup_save_continue">Сохранить и продолжить</string>
+    <string name="setup_saving">Сохранение…</string>
+    <string name="setup_connection_success">Подключено! Доступно моделей: %1$d.</string>
+    <string name="setup_connection_success_generic">Подключение успешно установлено.</string>
+    <string name="setup_validation_empty_key">Пожалуйста, введите Coarena API key.</string>
+    <string name="setup_validation_invalid_url">Введите корректный Base URL (http:// или https://).</string>
+
+    <!-- Chat Screen -->
+    <string name="chat_title">Coarena Chat</string>
+    <string name="chat_select_model">Выбрать модель</string>
+    <string name="chat_no_model_selected">Модель не выбрана</string>
+    <string name="chat_loading_models">Загрузка моделей…</string>
+    <string name="chat_new_chat_cd">Новый чат</string>
+    <string name="chat_settings_cd">Настройки</string>
+    <string name="chat_model_selector_cd">Выбрать модель ИИ</string>
+    <string name="chat_empty_title">Начните диалог</string>
+    <string name="chat_empty_subtitle">Выберите модель сверху и отправьте сообщение. Ответ выводится в реальном времени при поддержке стриминга.</string>
+    <string name="chat_prompt_chip_1">Кратко объясни сложную тему простыми словами</string>
+    <string name="chat_prompt_chip_2">Напиши чистый код на Kotlin с unit-тестами</string>
+    <string name="chat_prompt_chip_3">Предложи 5 идей для мобильного приложения</string>
+    <string name="chat_input_placeholder">Сообщение для Coarena…</string>
+    <string name="chat_send_cd">Отправить сообщение</string>
+    <string name="chat_stop_cd">Остановить генерацию</string>
+    <string name="chat_copy_cd">Скопировать текст</string>
+    <string name="chat_copied_snackbar">Скопировано в буфер обмена</string>
+    <string name="chat_role_you">Вы</string>
+    <string name="chat_role_assistant">Ассистент</string>
+    <string name="chat_streaming_indicator">Печатает…</string>
+    <string name="chat_retry">Повторить</string>
+    <string name="chat_open_settings">Настройки</string>
+    <string name="chat_dismiss">Скрыть</string>
+    <string name="chat_select_model_first">Сначала выберите модель.</string>
+    <string name="chat_default_system_prompt">Ты полезный ассистент.</string>
+
+    <!-- Model Picker Bottom Sheet -->
+    <string name="models_sheet_title">Доступные модели</string>
+    <string name="models_search_placeholder">Поиск модели…</string>
+    <string name="models_refresh_cd">Обновить список моделей</string>
+    <string name="models_empty">Модели не найдены. Проверьте API key и Base URL.</string>
+    <string name="models_context_label">Контекст: %1$s</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_title">Настройки</string>
+    <string name="settings_back_cd">Назад к чату</string>
+    <string name="settings_section_connection">Подключение и ключ</string>
+    <string name="settings_api_key_saved_hint">Ключ надёжно сохранён на устройстве. Введите новый, чтобы заменить его.</string>
+    <string name="settings_api_key_missing_hint">API-ключ ещё не сохранён.</string>
+    <string name="settings_save_credentials">Сохранить настройки</string>
+    <string name="settings_saved_snackbar">Настройки сохранены</string>
+    <string name="settings_default_model_label">Модель по умолчанию</string>
+    <string name="settings_default_model_none">Не выбрана</string>
+    <string name="settings_section_appearance">Оформление</string>
+    <string name="settings_theme_system">Системная</string>
+    <string name="settings_theme_light">Светлая</string>
+    <string name="settings_theme_dark">Тёмная</string>
+    <string name="settings_section_account">Баланс и лимиты</string>
+    <string name="settings_refresh_account_cd">Обновить данные аккаунта</string>
+    <string name="settings_credits_title">Текущий баланс</string>
+    <string name="settings_credits_empty">Баланс недоступен</string>
+    <string name="settings_credits_used">Использовано: %1$s</string>
+    <string name="settings_credits_granted">Начислено: %1$s</string>
+    <string name="settings_limits_title">Лимиты</string>
+    <string name="settings_limits_empty">Лимиты недоступны</string>
+    <string name="settings_limits_rpm">Запросов/мин</string>
+    <string name="settings_limits_tpm">Токенов/мин</string>
+    <string name="settings_limits_daily">Дневной лимит</string>
+    <string name="settings_limits_remaining">Остаток</string>
+    <string name="settings_section_requests">История запросов</string>
+    <string name="settings_requests_empty">API не вернул недавних запросов.</string>
+    <string name="settings_request_tokens">%1$d токенов</string>
+    <string name="settings_section_danger">Локальные данные и ключ</string>
+    <string name="settings_delete_key">Удалить сохранённый ключ</string>
+    <string name="settings_delete_key_confirm_title">Удалить API-ключ?</string>
+    <string name="settings_delete_key_confirm_body">Зашифрованный API-ключ будет удалён с устройства. Чтобы продолжить общение, потребуется ввести ключ заново.</string>
+    <string name="settings_clear_all_data">Удалить все локальные данные</string>
+    <string name="settings_clear_all_confirm_title">Удалить все локальные данные?</string>
+    <string name="settings_clear_all_confirm_body">Будут удалены сохранённый API-ключ, пользовательский Base URL, модель по умолчанию и настройки темы.</string>
+    <string name="action_confirm_delete">Удалить</string>
+    <string name="action_cancel">Отмена</string>
+
+    <!-- Error Handling -->
+    <string name="error_title">Ошибка запроса</string>
+    <string name="error_show_technical">Показать техническую причину</string>
+    <string name="error_hide_technical">Скрыть техническую причину</string>
+    <string name="error_unauthorized">Ошибка авторизации (HTTP 401). Проверьте правильность API-ключа.</string>
+    <string name="error_forbidden">Доступ запрещён (HTTP 403). У ключа нет прав для этого ресурса или модели.</string>
+    <string name="error_rate_limited">Превышен лимит запросов (HTTP 429). Подождите немного и повторите попытку.</string>
+    <string name="error_server">Ошибка сервера (HTTP %1$d). Сервис Coarena временно недоступен.</string>
+    <string name="error_http_generic">Сервер отклонил запрос (HTTP %1$d).</string>
+    <string name="error_network">Ошибка сети. Проверьте подключение к интернету и Base URL.</string>
+    <string name="error_timeout">Превышено время ожидания ответа от сервера.</string>
+    <string name="error_serialization">Не удалось разобрать ответ сервера.</string>
+    <string name="error_missing_api_key">API-ключ не задан. Введите ваш Coarena API key.</string>
+    <string name="error_invalid_url">Некорректный Base URL. Используйте адрес вида https://…</string>
+    <string name="error_unknown">Произошла непредвиденная ошибка.</string>
+</resources>

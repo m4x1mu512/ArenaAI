@@ -1,0 +1,6 @@
+{
+  "name": "Coarena Chat",
+  "description": "Material 3 Android chat client for Coarena AI with streaming SSE, secure local key storage, model switching, credits, limits, and request history.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
