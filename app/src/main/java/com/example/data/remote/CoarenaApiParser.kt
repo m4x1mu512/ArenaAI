@@ -66,16 +66,18 @@ class CoarenaApiParser(
                     AiModel(id = id, displayName = id)
                 }
                 is JsonObject -> {
-                    val rawId = element.stringValue("id")
-                    val explicitModel = element.stringValue("model_id", "model", "slug", "api_name")
+                    val rawId = element.stringValue("id")?.trim()
+                    val specificModelId = element.stringValue("model_id", "api_name", "slug")?.trim()
+                    val fallbackModelField = element.stringValue("model")?.trim()
                     val id = when {
-                        rawId != null && (rawId.all { it.isDigit() } || isUuid(rawId)) && explicitModel != null -> explicitModel
+                        specificModelId != null -> specificModelId
+                        rawId != null && (rawId.all { it.isDigit() } || isUuid(rawId)) && fallbackModelField != null -> fallbackModelField
                         rawId != null -> rawId
-                        explicitModel != null -> explicitModel
-                        else -> element.stringValue("name")
+                        fallbackModelField != null -> fallbackModelField
+                        else -> element.stringValue("name")?.trim()
                     } ?: return@mapNotNull null
 
-                    val displayName = element.stringValue("display_name", "name", "title") ?: id
+                    val displayName = element.stringValue("display_name", "name", "title")?.trim() ?: id
                     val ownedBy = element.stringValue("owned_by", "provider", "owner")
                     val contextLength = element.intValue("context_length", "max_context_tokens", "context_window")
                     AiModel(
@@ -111,6 +113,7 @@ class CoarenaApiParser(
             }
 
         val responseModelId = root.stringValue("model")
+            ?: (root["response"] as? JsonObject)?.stringValue("model")
 
         return ChatStreamEvent.Completed(
             fullText = content,
@@ -138,6 +141,7 @@ class CoarenaApiParser(
         }
 
         val responseModelId = root.stringValue("model")
+            ?: (root["response"] as? JsonObject)?.stringValue("model")
         val usageObj = root["usage"] as? JsonObject
         val totalTokens = usageObj?.intValue("total_tokens")
 

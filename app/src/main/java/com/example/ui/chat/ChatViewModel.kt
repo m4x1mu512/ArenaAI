@@ -17,8 +17,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -61,6 +59,7 @@ class ChatViewModel @Inject constructor(
     private var loadModelsJob: Job? = null
     private var hasUserExplicitlySelectedModel = false
     private var modelRestoredFromSession = false
+    private var modelAutoDefaultedFromFirst = false
     private var latestDefaultModelId: String? = null
 
     init {
@@ -104,37 +103,43 @@ class ChatViewModel @Inject constructor(
 
     private fun observeSettingsAndLoadModels() {
         viewModelScope.launch {
-            var hasObservedInitialDefault = false
-            settingsRepository.settingsFlow
-                .map { it.defaultModelId }
-                .distinctUntilChanged()
-                .collect { defaultModelId ->
-                    latestDefaultModelId = defaultModelId
-                    if (!hasObservedInitialDefault) {
-                        hasObservedInitialDefault = true
-                        if (defaultModelId != null &&
-                            !hasUserExplicitlySelectedModel &&
-                            (_uiState.value.selectedModelId == null || modelRestoredFromSession)
-                        ) {
-                            modelRestoredFromSession = false
-                            _uiState.update { it.copy(selectedModelId = defaultModelId) }
-                        }
-                    } else if (defaultModelId != null) {
-                        modelRestoredFromSession = false
-                        _uiState.update { it.copy(selectedModelId = defaultModelId) }
-                    }
-                }
-        }
+            var previousHasKey: Boolean? = null
+            var previousBaseUrl: String? = null
+            var previousDefaultModelId: String? = null
+            var hasObservedInitialSettings = false
 
-        viewModelScope.launch {
-            settingsRepository.settingsFlow
-                .map { it.hasApiKey to it.baseUrl }
-                .distinctUntilChanged()
-                .collect { (hasKey, _) ->
-                    if (hasKey) {
-                        loadModels(preferredModelId = latestDefaultModelId)
+            settingsRepository.settingsFlow.collect { settings ->
+                latestDefaultModelId = settings.defaultModelId
+
+                if (!hasObservedInitialSettings) {
+                    hasObservedInitialSettings = true
+                    previousDefaultModelId = settings.defaultModelId
+                    if (settings.defaultModelId != null &&
+                        !hasUserExplicitlySelectedModel &&
+                        (_uiState.value.selectedModelId == null || modelRestoredFromSession || modelAutoDefaultedFromFirst)
+                    ) {
+                        modelRestoredFromSession = false
+                        modelAutoDefaultedFromFirst = false
+                        _uiState.update { it.copy(selectedModelId = settings.defaultModelId) }
+                    }
+                } else if (settings.defaultModelId != previousDefaultModelId) {
+                    previousDefaultModelId = settings.defaultModelId
+                    if (settings.defaultModelId != null) {
+                        modelRestoredFromSession = false
+                        modelAutoDefaultedFromFirst = false
+                        _uiState.update { it.copy(selectedModelId = settings.defaultModelId) }
                     }
                 }
+
+                val credentialsChanged = settings.hasApiKey != previousHasKey ||
+                    settings.baseUrl != previousBaseUrl
+                previousHasKey = settings.hasApiKey
+                previousBaseUrl = settings.baseUrl
+
+                if (credentialsChanged && settings.hasApiKey) {
+                    loadModels(preferredModelId = settings.defaultModelId)
+                }
+            }
         }
     }
 
@@ -148,8 +153,14 @@ class ChatViewModel @Inject constructor(
                     _uiState.update { state ->
                         val candidate = state.selectedModelId ?: preferredModelId ?: latestDefaultModelId
                         val resolvedSelection = when {
-                            candidate != null && models.any { it.id == candidate } -> candidate
-                            models.isNotEmpty() -> models.first().id
+                            candidate != null && models.any { it.id == candidate } -> {
+                                modelAutoDefaultedFromFirst = false
+                                candidate
+                            }
+                            models.isNotEmpty() -> {
+                                modelAutoDefaultedFromFirst = candidate == null
+                                models.first().id
+                            }
                             else -> candidate
                         }
                         state.copy(
@@ -181,6 +192,7 @@ class ChatViewModel @Inject constructor(
     fun selectModel(modelId: String) {
         hasUserExplicitlySelectedModel = true
         modelRestoredFromSession = false
+        modelAutoDefaultedFromFirst = false
         _uiState.update { it.copy(selectedModelId = modelId, chatError = null) }
         viewModelScope.launch {
             settingsRepository.saveDefaultModel(modelId)
@@ -207,6 +219,7 @@ class ChatViewModel @Inject constructor(
         streamJob = null
         hasUserExplicitlySelectedModel = true
         modelRestoredFromSession = false
+        modelAutoDefaultedFromFirst = false
         viewModelScope.launch {
             val savedMessages = chatHistoryRepository.getMessages(sessionId)
             val session = _uiState.value.sessions.firstOrNull { it.id == sessionId }

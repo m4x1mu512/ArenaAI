@@ -127,6 +127,29 @@ class CoarenaNetworkClientTest {
     }
 
     @Test
+    fun `captures x-model response header when JSON omits model field`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setHeader("x-model", "gpt-6-luna")
+                .setBody("""{"choices":[{"message":{"role":"assistant","content":"Done"}}]}"""),
+        )
+
+        val events = client.streamChatCompletion(
+            baseUrl = baseUrl,
+            apiKey = "sk-test-1234567890",
+            modelId = "deepseek-v4-1-flash-1017",
+            history = listOf(ChatMessage(id = "1", role = MessageRole.USER, content = "Hi")),
+            systemPrompt = "",
+        ).toList()
+
+        assertEquals(1, events.size)
+        val completed = events[0] as ChatStreamEvent.Completed
+        assertEquals("gpt-6-luna", completed.responseModelId)
+    }
+
+    @Test
     fun `retries without stream when SSE returns non-auth error`() = runTest {
         // First response: streaming rejected (HTTP 400)
         server.enqueue(

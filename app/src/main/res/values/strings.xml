@@ -52,6 +52,7 @@
     <string name="chat_dismiss">Dismiss</string>
     <string name="chat_select_model_first">Please select a model first.</string>
     <string name="chat_default_system_prompt">You are a helpful assistant.</string>
+    <string name="chat_server_model_override">Server returned model: %1$s</string>
 
     <!-- Model Picker Bottom Sheet -->
     <string name="models_sheet_title">Available Models</string>

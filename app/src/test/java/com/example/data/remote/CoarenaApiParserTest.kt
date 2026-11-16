@@ -30,12 +30,13 @@ class CoarenaApiParserTest {
     }
 
     @Test
-    fun `prefers slug or model_id when id is numeric or uuid`() {
+    fun `prefers slug, api_name, or model_id over record id`() {
         val json = """
             {
               "data": [
                 {"id": 42, "slug": "deepseek-v4-1-flash-1017", "name": "DeepSeek v4.1 Flash"},
-                {"id": "550e8400-e29b-41d4-a716-446655440000", "model_id": "gpt-6-luna", "display_name": "GPT-6 Luna"}
+                {"id": "550e8400-e29b-41d4-a716-446655440000", "model_id": "gpt-6-luna", "display_name": "GPT-6 Luna"},
+                {"id": "rec_999", "api_name": "deepseek-v4-1-flash-1017", "display_name": "DeepSeek API"}
               ]
             }
         """.trimIndent()

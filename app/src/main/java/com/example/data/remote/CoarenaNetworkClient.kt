@@ -107,7 +107,7 @@ class CoarenaNetworkClient @Inject constructor(
         }
 
         val streamingRequestDto = ChatCompletionRequestDto(
-            model = modelId,
+            model = modelId.trim(),
             messages = dtoMessages,
             stream = true,
         )
@@ -139,6 +139,8 @@ class CoarenaNetworkClient @Inject constructor(
                     return@use
                 }
 
+                val headerModelId = response.header("x-model")?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: response.header("x-coarena-model")?.trim()?.takeIf { it.isNotEmpty() }
                 val contentType = response.header("Content-Type").orEmpty().lowercase()
                 val body = response.body
                     ?: throw CoarenaApiException(AppError.SerializationError("Empty response body"))
@@ -147,12 +149,18 @@ class CoarenaNetworkClient @Inject constructor(
                     // Server ignored stream=true and returned a single JSON completion
                     val raw = body.string()
                     val completed = parser.parseChatCompletionJson(raw)
-                    emit(completed)
+                    emit(
+                        if (completed.responseModelId.isNullOrBlank() && headerModelId != null) {
+                            completed.copy(responseModelId = headerModelId)
+                        } else {
+                            completed
+                        },
+                    )
                     return@flow
                 }
 
                 // Read SSE stream line by line
-                var lastResponseModelId: String? = null
+                var lastResponseModelId: String? = headerModelId
                 val source = body.source()
                 while (currentCoroutineContext().isActive) {
                     val line = source.readUtf8Line() ?: break
@@ -254,8 +262,15 @@ class CoarenaNetworkClient @Inject constructor(
                 authorization = "Bearer $apiKey",
                 request = requestDto,
             )
+            val headerModelId = response.headers()["x-model"]?.trim()?.takeIf { it.isNotEmpty() }
+                ?: response.headers()["x-coarena-model"]?.trim()?.takeIf { it.isNotEmpty() }
             parseRetrofitResponse(response, apiKey) { rawBody ->
-                parser.parseChatCompletionJson(rawBody)
+                val completed = parser.parseChatCompletionJson(rawBody)
+                if (completed.responseModelId.isNullOrBlank() && headerModelId != null) {
+                    completed.copy(responseModelId = headerModelId)
+                } else {
+                    completed
+                }
             }
         } catch (e: Exception) {
             Result.failure(mapException(e, apiKey))

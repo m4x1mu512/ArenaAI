@@ -617,7 +617,7 @@ private fun ChatMessageBubble(
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = contentColor.copy(alpha = 0.75f),
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
@@ -641,6 +641,18 @@ private fun ChatMessageBubble(
                             modifier = Modifier.size(15.dp),
                         )
                     }
+                }
+            }
+
+            if (!isUser && message.modelId?.contains(" → ") == true) {
+                val actualModel = message.modelId.substringAfter(" → ").trim()
+                if (actualModel.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = stringResource(R.string.chat_server_model_override, actualModel),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
 

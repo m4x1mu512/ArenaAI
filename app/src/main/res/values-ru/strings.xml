@@ -52,6 +52,7 @@
     <string name="chat_dismiss">Скрыть</string>
     <string name="chat_select_model_first">Сначала выберите модель.</string>
     <string name="chat_default_system_prompt">Ты полезный ассистент.</string>
+    <string name="chat_server_model_override">Ответ сервера выполнен моделью: %1$s</string>
 
     <!-- Model Picker Bottom Sheet -->
     <string name="models_sheet_title">Доступные модели</string>
