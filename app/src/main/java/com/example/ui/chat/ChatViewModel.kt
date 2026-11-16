@@ -58,6 +58,10 @@ class ChatViewModel @Inject constructor(
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     private var streamJob: Job? = null
+    private var loadModelsJob: Job? = null
+    private var hasUserExplicitlySelectedModel = false
+    private var modelRestoredFromSession = false
+    private var latestDefaultModelId: String? = null
 
     init {
         observeHistorySessions()
@@ -80,10 +84,18 @@ class ChatViewModel @Inject constructor(
             val savedMessages = chatHistoryRepository.getMessages(latest.id)
             if (savedMessages.isNotEmpty() && _uiState.value.messages.isEmpty()) {
                 _uiState.update { state ->
+                    val shouldUseSessionModel = !hasUserExplicitlySelectedModel &&
+                        state.selectedModelId == null &&
+                        latestDefaultModelId == null &&
+                        latest.modelId != null &&
+                        (state.models.isEmpty() || state.models.any { it.id == latest.modelId })
+                    if (shouldUseSessionModel) {
+                        modelRestoredFromSession = true
+                    }
                     state.copy(
                         currentSessionId = latest.id,
                         messages = savedMessages,
-                        selectedModelId = latest.modelId ?: state.selectedModelId,
+                        selectedModelId = if (shouldUseSessionModel) latest.modelId else state.selectedModelId,
                     )
                 }
             }
@@ -92,15 +104,35 @@ class ChatViewModel @Inject constructor(
 
     private fun observeSettingsAndLoadModels() {
         viewModelScope.launch {
+            var hasObservedInitialDefault = false
             settingsRepository.settingsFlow
-                .map { Triple(it.hasApiKey, it.baseUrl, it.defaultModelId) }
+                .map { it.defaultModelId }
                 .distinctUntilChanged()
-                .collect { (hasKey, _, defaultModelId) ->
-                    if (defaultModelId != null && _uiState.value.selectedModelId == null) {
+                .collect { defaultModelId ->
+                    latestDefaultModelId = defaultModelId
+                    if (!hasObservedInitialDefault) {
+                        hasObservedInitialDefault = true
+                        if (defaultModelId != null &&
+                            !hasUserExplicitlySelectedModel &&
+                            (_uiState.value.selectedModelId == null || modelRestoredFromSession)
+                        ) {
+                            modelRestoredFromSession = false
+                            _uiState.update { it.copy(selectedModelId = defaultModelId) }
+                        }
+                    } else if (defaultModelId != null) {
+                        modelRestoredFromSession = false
                         _uiState.update { it.copy(selectedModelId = defaultModelId) }
                     }
+                }
+        }
+
+        viewModelScope.launch {
+            settingsRepository.settingsFlow
+                .map { it.hasApiKey to it.baseUrl }
+                .distinctUntilChanged()
+                .collect { (hasKey, _) ->
                     if (hasKey) {
-                        loadModels(preferredModelId = defaultModelId)
+                        loadModels(preferredModelId = latestDefaultModelId)
                     }
                 }
         }
@@ -108,12 +140,13 @@ class ChatViewModel @Inject constructor(
 
     /** Loads or refreshes available models from `GET /models`. */
     fun loadModels(preferredModelId: String? = null) {
-        viewModelScope.launch {
+        loadModelsJob?.cancel()
+        loadModelsJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoadingModels = true, modelsError = null) }
             coarenaRepository.fetchModels().fold(
                 onSuccess = { models ->
                     _uiState.update { state ->
-                        val candidate = state.selectedModelId ?: preferredModelId
+                        val candidate = state.selectedModelId ?: preferredModelId ?: latestDefaultModelId
                         val resolvedSelection = when {
                             candidate != null && models.any { it.id == candidate } -> candidate
                             models.isNotEmpty() -> models.first().id
@@ -146,6 +179,8 @@ class ChatViewModel @Inject constructor(
 
     /** Selects an AI model for subsequent messages and remembers it as default. */
     fun selectModel(modelId: String) {
+        hasUserExplicitlySelectedModel = true
+        modelRestoredFromSession = false
         _uiState.update { it.copy(selectedModelId = modelId, chatError = null) }
         viewModelScope.launch {
             settingsRepository.saveDefaultModel(modelId)
@@ -170,6 +205,8 @@ class ChatViewModel @Inject constructor(
     fun selectSession(sessionId: String) {
         streamJob?.cancel()
         streamJob = null
+        hasUserExplicitlySelectedModel = true
+        modelRestoredFromSession = false
         viewModelScope.launch {
             val savedMessages = chatHistoryRepository.getMessages(sessionId)
             val session = _uiState.value.sessions.firstOrNull { it.id == sessionId }
@@ -361,6 +398,7 @@ class ChatViewModel @Inject constructor(
         systemPrompt: String,
     ) {
         streamJob = viewModelScope.launch {
+            var latestResponseModelId: String? = null
             try {
                 coarenaRepository.sendChatMessage(
                     modelId = modelId,
@@ -369,11 +407,19 @@ class ChatViewModel @Inject constructor(
                 ).collect { event ->
                     when (event) {
                         is ChatStreamEvent.Delta -> {
+                            val responseModel = event.responseModelId?.takeIf { it.isNotBlank() }
+                            if (responseModel != null) {
+                                latestResponseModelId = responseModel
+                            }
+                            val label = formatBubbleModelLabel(modelId, latestResponseModelId)
                             _uiState.update { current ->
                                 current.copy(
                                     messages = current.messages.map { msg ->
                                         if (msg.id == assistantPlaceholderId) {
-                                            msg.copy(content = msg.content + event.textChunk)
+                                            msg.copy(
+                                                content = msg.content + event.textChunk,
+                                                modelId = label,
+                                            )
                                         } else {
                                             msg
                                         }
@@ -382,6 +428,12 @@ class ChatViewModel @Inject constructor(
                             }
                         }
                         is ChatStreamEvent.Completed -> {
+                            val actualResponseModel = event.responseModelId?.takeIf { it.isNotBlank() }
+                                ?: latestResponseModelId
+                            if (actualResponseModel != null) {
+                                latestResponseModelId = actualResponseModel
+                            }
+                            val label = formatBubbleModelLabel(modelId, actualResponseModel)
                             var completedMessage: ChatMessage? = null
                             _uiState.update { current ->
                                 val updated = current.messages.map { msg ->
@@ -390,6 +442,7 @@ class ChatViewModel @Inject constructor(
                                             content = event.fullText ?: msg.content,
                                             isStreaming = false,
                                             totalTokens = event.totalTokens ?: msg.totalTokens,
+                                            modelId = label,
                                         )
                                         completedMessage = finalized
                                         finalized
@@ -412,11 +465,15 @@ class ChatViewModel @Inject constructor(
                 }
 
                 // Ensure any trailing non-completed stream state is finalized and persisted
+                val label = formatBubbleModelLabel(modelId, latestResponseModelId)
                 var finalizedMessage: ChatMessage? = null
                 _uiState.update { current ->
                     val updated = current.messages.map { msg ->
                         if (msg.id == assistantPlaceholderId && msg.isStreaming) {
-                            val finalized = msg.copy(isStreaming = false)
+                            val finalized = msg.copy(
+                                isStreaming = false,
+                                modelId = label,
+                            )
                             finalizedMessage = finalized
                             finalized
                         } else {
@@ -437,13 +494,18 @@ class ChatViewModel @Inject constructor(
                 throw e
             } catch (e: Throwable) {
                 val appError = e.toAppError()
+                val label = formatBubbleModelLabel(modelId, latestResponseModelId)
                 var partialMessage: ChatMessage? = null
                 _uiState.update { current ->
                     val cleaned = current.messages.filterNot {
                         it.id == assistantPlaceholderId && it.content.isBlank()
                     }.map { msg ->
                         if (msg.id == assistantPlaceholderId) {
-                            val updated = msg.copy(isStreaming = false, isError = true)
+                            val updated = msg.copy(
+                                isStreaming = false,
+                                isError = true,
+                                modelId = label,
+                            )
                             partialMessage = updated
                             updated
                         } else {
@@ -465,6 +527,18 @@ class ChatViewModel @Inject constructor(
                     )
                 }
             }
+        }
+    }
+
+    private fun formatBubbleModelLabel(
+        requestedModelId: String,
+        responseModelId: String?,
+    ): String {
+        val actual = responseModelId?.trim()?.takeIf { it.isNotEmpty() } ?: return requestedModelId
+        return if (actual != requestedModelId) {
+            "$requestedModelId → $actual"
+        } else {
+            actual
         }
     }
 

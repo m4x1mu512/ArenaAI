@@ -299,7 +299,21 @@ fun SettingsScreenContent(
                             ) {
                                 uiState.models.forEach { model ->
                                     DropdownMenuItem(
-                                        text = { Text(model.displayName) },
+                                        text = {
+                                            Column {
+                                                Text(
+                                                    text = model.displayName,
+                                                    style = MaterialTheme.typography.bodyLarge,
+                                                )
+                                                if (model.displayName != model.id) {
+                                                    Text(
+                                                        text = model.id,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
+                                            }
+                                        },
                                         onClick = {
                                             onSelectDefaultModel(model.id)
                                             showModelMenu = false

@@ -52,8 +52,15 @@ data class AiModel(
  */
 sealed interface ChatStreamEvent {
     /** Incremental text token/chunk appended to the assistant message. */
-    data class Delta(val textChunk: String) : ChatStreamEvent
+    data class Delta(
+        val textChunk: String,
+        val responseModelId: String? = null,
+    ) : ChatStreamEvent
 
-    /** Final completion event containing optional token usage. */
-    data class Completed(val fullText: String? = null, val totalTokens: Int? = null) : ChatStreamEvent
+    /** Final completion event containing optional token usage and server-reported model ID. */
+    data class Completed(
+        val fullText: String? = null,
+        val totalTokens: Int? = null,
+        val responseModelId: String? = null,
+    ) : ChatStreamEvent
 }

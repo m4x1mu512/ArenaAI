@@ -152,6 +152,7 @@ class CoarenaNetworkClient @Inject constructor(
                 }
 
                 // Read SSE stream line by line
+                var lastResponseModelId: String? = null
                 val source = body.source()
                 while (currentCoroutineContext().isActive) {
                     val line = source.readUtf8Line() ?: break
@@ -167,10 +168,19 @@ class CoarenaNetworkClient @Inject constructor(
                                 if (parsed.totalTokens != null) {
                                     lastTotalTokens = parsed.totalTokens
                                 }
-                                emit(ChatStreamEvent.Delta(parsed.text))
+                                if (!parsed.responseModelId.isNullOrBlank()) {
+                                    lastResponseModelId = parsed.responseModelId
+                                }
+                                emit(ChatStreamEvent.Delta(parsed.text, parsed.responseModelId))
                             }
                             is SseParseResult.UsageOnly -> {
                                 lastTotalTokens = parsed.totalTokens
+                                if (!parsed.responseModelId.isNullOrBlank()) {
+                                    lastResponseModelId = parsed.responseModelId
+                                }
+                            }
+                            is SseParseResult.ModelMetadata -> {
+                                lastResponseModelId = parsed.responseModelId
                             }
                             SseParseResult.Done -> {
                                 break
@@ -187,7 +197,12 @@ class CoarenaNetworkClient @Inject constructor(
                 }
 
                 if (emittedAnyDelta) {
-                    emit(ChatStreamEvent.Completed(totalTokens = lastTotalTokens))
+                    emit(
+                        ChatStreamEvent.Completed(
+                            totalTokens = lastTotalTokens,
+                            responseModelId = lastResponseModelId,
+                        ),
+                    )
                     return@flow
                 } else {
                     shouldFallbackToNonStreaming = true

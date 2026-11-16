@@ -256,14 +256,108 @@ class CoarenaUiTest {
         assertEquals(null, fakeSettings.storedKey)
     }
 
+    @Test
+    fun chatScreen_syncsDefaultModelChange_andSendsSelectedModel() {
+        val fakeSettings = FakeSettingsRepository(
+            initialKey = "sk-valid-123456",
+            initialDefaultModelId = "deepseek-v4-1-flash-1017",
+        )
+        val fakeRepo = FakeCoarenaRepository(
+            models = listOf(
+                AiModel(id = "gpt-6-luna", displayName = "GPT-6 Luna"),
+                AiModel(id = "deepseek-v4-1-flash-1017", displayName = "DeepSeek v4.1 flash"),
+            ),
+            replyChunks = listOf("Answer"),
+            responseModelId = "deepseek-v4-1-flash-1017",
+        )
+        val fakeHistory = FakeChatHistoryRepository().apply {
+            seedSession(
+                sessionId = "old_session",
+                title = "Old GPT chat",
+                modelId = "gpt-6-luna",
+                updatedAt = 1000L,
+                messages = listOf(
+                    ChatMessage(id = "u1", role = MessageRole.USER, content = "Hi", timestampMillis = 1000L),
+                    ChatMessage(id = "a1", role = MessageRole.ASSISTANT, content = "Hello", timestampMillis = 1001L, modelId = "gpt-6-luna"),
+                ),
+            )
+        }
+        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory)
+
+        composeRule.setContent {
+            CoarenaTheme {
+                ChatScreen(
+                    onOpenSettings = {},
+                    viewModel = viewModel,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        // Default model from settings must win over older session's modelId on startup
+        composeRule.onNodeWithTag("model_selector_button").assertTextContains("DeepSeek v4.1 flash")
+
+        // Send message and verify exact requested modelId
+        composeRule.onNodeWithTag("chat_message_input").performTextInput("Test DeepSeek")
+        composeRule.onNodeWithTag("send_message_button").performClick()
+        composeRule.waitForIdle()
+        assertEquals("deepseek-v4-1-flash-1017", fakeRepo.lastSentModelId)
+
+        // Changing default model in Settings updates ChatScreen selection even after a model is active
+        kotlinx.coroutines.runBlocking {
+            fakeSettings.saveDefaultModel("gpt-6-luna")
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("model_selector_button").assertTextContains("GPT-6 Luna")
+    }
+
+    @Test
+    fun chatScreen_showsModelMismatchArrow_whenServerEchoesDifferentModel() {
+        val fakeSettings = FakeSettingsRepository(initialKey = "sk-valid-123456")
+        val fakeRepo = FakeCoarenaRepository(
+            models = listOf(
+                AiModel(id = "gpt-6-luna", displayName = "GPT-6 Luna"),
+                AiModel(id = "deepseek-v4-1-flash-1017", displayName = "DeepSeek v4.1 flash"),
+            ),
+            replyChunks = listOf("Routed reply"),
+            responseModelId = "gpt-6-luna",
+        )
+        val fakeHistory = FakeChatHistoryRepository()
+        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory)
+
+        composeRule.setContent {
+            CoarenaTheme {
+                ChatScreen(
+                    onOpenSettings = {},
+                    viewModel = viewModel,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        // Pick DeepSeek in model picker sheet
+        composeRule.onNodeWithTag("model_selector_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("model_item_deepseek-v4-1-flash-1017").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("chat_message_input").performTextInput("Ping")
+        composeRule.onNodeWithTag("send_message_button").performClick()
+        composeRule.waitForIdle()
+
+        assertEquals("deepseek-v4-1-flash-1017", fakeRepo.lastSentModelId)
+        composeRule.onNodeWithText("deepseek-v4-1-flash-1017 → gpt-6-luna").assertIsDisplayed()
+    }
+
     private class FakeSettingsRepository(
         initialKey: String? = null,
+        initialDefaultModelId: String? = null,
     ) : SettingsRepository {
         var storedKey: String? = initialKey
         private val state = MutableStateFlow(
             AppSettings(
                 baseUrl = AppSettings.DEFAULT_BASE_URL,
-                defaultModelId = null,
+                defaultModelId = initialDefaultModelId,
                 themeMode = ThemeMode.SYSTEM,
                 hasApiKey = !initialKey.isNullOrBlank(),
             ),
@@ -390,7 +484,10 @@ class CoarenaUiTest {
         private val models: List<AiModel> = listOf(AiModel(id = "coarena-pro", displayName = "Coarena Pro")),
         private val replyChunks: List<String> = listOf("Hello!"),
         private val chatError: AppError? = null,
+        private val responseModelId: String? = null,
     ) : CoarenaRepository {
+
+        var lastSentModelId: String? = null
 
         override suspend fun fetchModels(): Result<List<AiModel>> = Result.success(models)
 
@@ -403,11 +500,12 @@ class CoarenaUiTest {
             history: List<ChatMessage>,
             systemPrompt: String,
         ): Flow<ChatStreamEvent> = flow {
+            lastSentModelId = modelId
             if (chatError != null) {
                 throw com.example.data.remote.CoarenaApiException(chatError)
             }
-            replyChunks.forEach { emit(ChatStreamEvent.Delta(it)) }
-            emit(ChatStreamEvent.Completed(totalTokens = 42))
+            replyChunks.forEach { emit(ChatStreamEvent.Delta(it, responseModelId = responseModelId)) }
+            emit(ChatStreamEvent.Completed(totalTokens = 42, responseModelId = responseModelId))
         }
 
         override suspend fun fetchCredits(): Result<CreditsInfo> = Result.success(

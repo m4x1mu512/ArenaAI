@@ -81,12 +81,49 @@ class CoarenaNetworkClientTest {
 
         val recorded = server.takeRequest()
         assertEquals("Bearer sk-test-1234567890", recorded.getHeader("Authorization"))
-        assertTrue(recorded.body.readUtf8().contains(""""stream":true"""))
+        val sentBody = recorded.body.readUtf8()
+        assertTrue(sentBody.contains(""""stream":true"""))
+        assertTrue(sentBody.contains(""""model":"gpt-4o""""))
 
         assertEquals(3, events.size)
         assertEquals("Привет, ", (events[0] as ChatStreamEvent.Delta).textChunk)
         assertEquals("мир!", (events[1] as ChatStreamEvent.Delta).textChunk)
         assertTrue(events[2] is ChatStreamEvent.Completed)
+    }
+
+    @Test
+    fun `propagates responseModelId from SSE metadata and chunks`() = runTest {
+        val sseBody = """
+            data: {"model":"gpt-6-luna","choices":[{"delta":{"role":"assistant"}}]}
+
+            data: {"choices":[{"delta":{"content":"Hi"}}]}
+
+            data: [DONE]
+
+        """.trimIndent()
+
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(sseBody),
+        )
+
+        val events = client.streamChatCompletion(
+            baseUrl = baseUrl,
+            apiKey = "sk-test-1234567890",
+            modelId = "deepseek-v4-1-flash-1017",
+            history = listOf(ChatMessage(id = "1", role = MessageRole.USER, content = "Hi")),
+            systemPrompt = "",
+        ).toList()
+
+        val recorded = server.takeRequest()
+        assertTrue(recorded.body.readUtf8().contains(""""model":"deepseek-v4-1-flash-1017""""))
+
+        assertEquals(2, events.size)
+        assertEquals("Hi", (events[0] as ChatStreamEvent.Delta).textChunk)
+        val completed = events[1] as ChatStreamEvent.Completed
+        assertEquals("gpt-6-luna", completed.responseModelId)
     }
 
     @Test

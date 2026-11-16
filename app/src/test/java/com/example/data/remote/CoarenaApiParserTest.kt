@@ -30,20 +30,46 @@ class CoarenaApiParserTest {
     }
 
     @Test
-    fun `parses SSE delta chunk and DONE sentinel`() {
-        val chunkPayload = """{"id":"1","choices":[{"index":0,"delta":{"content":"Hello "}}]}"""
+    fun `prefers slug or model_id when id is numeric or uuid`() {
+        val json = """
+            {
+              "data": [
+                {"id": 42, "slug": "deepseek-v4-1-flash-1017", "name": "DeepSeek v4.1 Flash"},
+                {"id": "550e8400-e29b-41d4-a716-446655440000", "model_id": "gpt-6-luna", "display_name": "GPT-6 Luna"}
+              ]
+            }
+        """.trimIndent()
+
+        val models = parser.parseModels(json)
+        assertEquals(2, models.size)
+        assertEquals("deepseek-v4-1-flash-1017", models[0].id)
+        assertEquals("DeepSeek v4.1 Flash", models[0].displayName)
+        assertEquals("gpt-6-luna", models[1].id)
+        assertEquals("GPT-6 Luna", models[1].displayName)
+    }
+
+    @Test
+    fun `parses SSE delta chunk, metadata, and DONE sentinel`() {
+        val chunkPayload = """{"id":"1","model":"deepseek-v4-1-flash-1017","choices":[{"index":0,"delta":{"content":"Hello "}}]}"""
         val result = parser.parseSseDataPayload(chunkPayload)
         assertTrue(result is SseParseResult.Chunk)
-        assertEquals("Hello ", (result as SseParseResult.Chunk).text)
+        val chunk = result as SseParseResult.Chunk
+        assertEquals("Hello ", chunk.text)
+        assertEquals("deepseek-v4-1-flash-1017", chunk.responseModelId)
+
+        val metaPayload = """{"id":"1","model":"gpt-6-luna","choices":[{"index":0,"delta":{"role":"assistant"}}]}"""
+        val metaResult = parser.parseSseDataPayload(metaPayload)
+        assertEquals(SseParseResult.ModelMetadata("gpt-6-luna"), metaResult)
 
         assertEquals(SseParseResult.Done, parser.parseSseDataPayload("[DONE]"))
     }
 
     @Test
-    fun `parses non-streaming chat completion JSON with usage`() {
+    fun `parses non-streaming chat completion JSON with usage and model`() {
         val json = """
             {
               "id": "chatcmpl-123",
+              "model": "deepseek-v4-1-flash-1017",
               "choices": [
                 {"index": 0, "message": {"role": "assistant", "content": "Kotlin rocks!"}}
               ],
@@ -54,6 +80,7 @@ class CoarenaApiParserTest {
         val completed = parser.parseChatCompletionJson(json)
         assertEquals("Kotlin rocks!", completed.fullText)
         assertEquals(20, completed.totalTokens)
+        assertEquals("deepseek-v4-1-flash-1017", completed.responseModelId)
     }
 
     @Test

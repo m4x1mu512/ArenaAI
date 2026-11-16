@@ -22,8 +22,16 @@ import kotlinx.serialization.json.jsonPrimitive
  * Outcome of parsing a single SSE `data:` payload.
  */
 sealed interface SseParseResult {
-    data class Chunk(val text: String, val totalTokens: Int? = null) : SseParseResult
-    data class UsageOnly(val totalTokens: Int) : SseParseResult
+    data class Chunk(
+        val text: String,
+        val totalTokens: Int? = null,
+        val responseModelId: String? = null,
+    ) : SseParseResult
+    data class UsageOnly(
+        val totalTokens: Int,
+        val responseModelId: String? = null,
+    ) : SseParseResult
+    data class ModelMetadata(val responseModelId: String) : SseParseResult
     data object Done : SseParseResult
     data object Ignore : SseParseResult
 }
@@ -58,7 +66,15 @@ class CoarenaApiParser(
                     AiModel(id = id, displayName = id)
                 }
                 is JsonObject -> {
-                    val id = element.stringValue("id", "model", "name") ?: return@mapNotNull null
+                    val rawId = element.stringValue("id")
+                    val explicitModel = element.stringValue("model_id", "model", "slug", "api_name")
+                    val id = when {
+                        rawId != null && (rawId.all { it.isDigit() } || isUuid(rawId)) && explicitModel != null -> explicitModel
+                        rawId != null -> rawId
+                        explicitModel != null -> explicitModel
+                        else -> element.stringValue("name")
+                    } ?: return@mapNotNull null
+
                     val displayName = element.stringValue("display_name", "name", "title") ?: id
                     val ownedBy = element.stringValue("owned_by", "provider", "owner")
                     val contextLength = element.intValue("context_length", "max_context_tokens", "context_window")
@@ -94,9 +110,12 @@ class CoarenaApiParser(
                 if (prompt != null && completion != null) prompt + completion else null
             }
 
+        val responseModelId = root.stringValue("model")
+
         return ChatStreamEvent.Completed(
             fullText = content,
             totalTokens = totalTokens,
+            responseModelId = responseModelId,
         )
     }
 
@@ -118,6 +137,7 @@ class CoarenaApiParser(
             throw IllegalStateException(message)
         }
 
+        val responseModelId = root.stringValue("model")
         val usageObj = root["usage"] as? JsonObject
         val totalTokens = usageObj?.intValue("total_tokens")
 
@@ -126,8 +146,16 @@ class CoarenaApiParser(
         val deltaText = extractDeltaText(firstChoice) ?: root.stringValue("delta", "text")
 
         return when {
-            !deltaText.isNullOrEmpty() -> SseParseResult.Chunk(deltaText, totalTokens)
-            totalTokens != null -> SseParseResult.UsageOnly(totalTokens)
+            !deltaText.isNullOrEmpty() -> SseParseResult.Chunk(
+                text = deltaText,
+                totalTokens = totalTokens,
+                responseModelId = responseModelId,
+            )
+            totalTokens != null -> SseParseResult.UsageOnly(
+                totalTokens = totalTokens,
+                responseModelId = responseModelId,
+            )
+            !responseModelId.isNullOrBlank() -> SseParseResult.ModelMetadata(responseModelId)
             else -> SseParseResult.Ignore
         }
     }
@@ -345,6 +373,10 @@ class CoarenaApiParser(
             prim.contentOrNull?.toIntOrNull()?.let { return it }
         }
         return null
+    }
+
+    private fun isUuid(value: String): Boolean {
+        return value.length == 36 && value.count { it == '-' } == 4
     }
 
     companion object {
