@@ -1,5 +1,6 @@
 package com.example.domain.repository
 
+import com.example.domain.model.ApiWireFormat
 import com.example.domain.model.AppSettings
 import com.example.domain.model.ThemeMode
 import kotlinx.coroutines.flow.Flow
@@ -28,6 +29,12 @@ interface SettingsRepository {
 
     /** Updates the UI theme preference in DataStore. */
     suspend fun saveThemeMode(themeMode: ThemeMode)
+
+    /** Enables or disables SSE streaming for chat completions. */
+    suspend fun saveUseStreaming(enabled: Boolean)
+
+    /** Selects OpenAI wire endpoint format (`/chat/completions` vs `/responses`). */
+    suspend fun saveWireFormat(wireFormat: ApiWireFormat)
 
     /** Deletes only the saved API key from secure storage. */
     suspend fun deleteApiKey()

@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import com.example.domain.model.AiModel
+import com.example.domain.model.ApiWireFormat
 import com.example.domain.model.AppError
 import com.example.domain.model.AppSettings
 import com.example.domain.model.ChatMessage
@@ -20,6 +21,7 @@ import com.example.domain.model.ConnectionTestResult
 import com.example.domain.model.CreditsInfo
 import com.example.domain.model.LimitsInfo
 import com.example.domain.model.MessageRole
+import com.example.domain.model.RequestDiagnostic
 import com.example.domain.model.RequestHistoryItem
 import com.example.domain.model.ThemeMode
 import com.example.domain.repository.ChatHistoryRepository
@@ -34,6 +36,7 @@ import com.example.ui.setup.SetupViewModel
 import com.example.ui.theme.CoarenaTheme
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import org.junit.Assert.assertEquals
@@ -384,6 +387,14 @@ class CoarenaUiTest {
             state.value = state.value.copy(themeMode = themeMode)
         }
 
+        override suspend fun saveUseStreaming(enabled: Boolean) {
+            state.value = state.value.copy(useStreaming = enabled)
+        }
+
+        override suspend fun saveWireFormat(wireFormat: ApiWireFormat) {
+            state.value = state.value.copy(wireFormat = wireFormat)
+        }
+
         override suspend fun deleteApiKey() {
             storedKey = null
             state.value = state.value.copy(hasApiKey = false)
@@ -488,6 +499,7 @@ class CoarenaUiTest {
     ) : CoarenaRepository {
 
         var lastSentModelId: String? = null
+        override val lastRequestDiagnostic: StateFlow<RequestDiagnostic?> = MutableStateFlow(null)
 
         override suspend fun fetchModels(): Result<List<AiModel>> = Result.success(models)
 

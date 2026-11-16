@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
+import com.example.domain.model.ApiWireFormat
 import com.example.domain.model.ThemeMode
 import com.example.ui.components.ErrorBannerCard
 
@@ -100,6 +101,8 @@ fun SettingsScreen(
         onResetBaseUrl = viewModel::resetBaseUrl,
         onSelectDefaultModel = viewModel::selectDefaultModel,
         onSelectThemeMode = viewModel::selectThemeMode,
+        onToggleStreaming = viewModel::setUseStreaming,
+        onSelectWireFormat = viewModel::setWireFormat,
         onTestConnection = viewModel::testConnection,
         onSaveChanges = viewModel::saveChanges,
         onRefreshAccountData = viewModel::refreshAccountData,
@@ -124,6 +127,8 @@ fun SettingsScreenContent(
     onResetBaseUrl: () -> Unit,
     onSelectDefaultModel: (String) -> Unit,
     onSelectThemeMode: (ThemeMode) -> Unit,
+    onToggleStreaming: (Boolean) -> Unit,
+    onSelectWireFormat: (ApiWireFormat) -> Unit,
     onTestConnection: () -> Unit,
     onSaveChanges: () -> Unit,
     onRefreshAccountData: () -> Unit,
@@ -428,6 +433,15 @@ fun SettingsScreenContent(
                         }
                     }
                 }
+
+                // API compatibility & last request diagnostics
+                ApiCompatibilityAndDiagnosticsCard(
+                    useStreaming = uiState.useStreaming,
+                    wireFormat = uiState.wireFormat,
+                    lastDiagnostic = uiState.lastDiagnostic,
+                    onToggleStreaming = onToggleStreaming,
+                    onSelectWireFormat = onSelectWireFormat,
+                )
 
                 // Section 2: Appearance
                 SettingsSectionHeader(stringResource(R.string.settings_section_appearance))

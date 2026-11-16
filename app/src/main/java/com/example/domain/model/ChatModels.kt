@@ -64,3 +64,17 @@ sealed interface ChatStreamEvent {
         val responseModelId: String? = null,
     ) : ChatStreamEvent
 }
+
+/**
+ * Non-secret diagnostic snapshot of the latest chat completion API request.
+ */
+data class RequestDiagnostic(
+    val endpointUrl: String,
+    val sentModelId: String,
+    val stream: Boolean,
+    val wireFormat: ApiWireFormat,
+    val httpStatusCode: Int? = null,
+    val responseModelId: String? = null,
+    val headerModelId: String? = null,
+    val timestampMillis: Long = System.currentTimeMillis(),
+)

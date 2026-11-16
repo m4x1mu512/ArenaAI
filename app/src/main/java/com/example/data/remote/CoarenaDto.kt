@@ -23,6 +23,17 @@ data class ChatCompletionRequestDto(
 )
 
 /**
+ * Request body sent to `POST {baseUrl}/responses` (OpenAI Responses wire format).
+ */
+@Serializable
+data class ResponsesRequestDto(
+    val model: String,
+    val input: List<ChatMessageDto>,
+    val instructions: String? = null,
+    val stream: Boolean = true,
+)
+
+/**
  * Token usage summary optionally returned by chat completion or request logs.
  */
 @Serializable

@@ -5,10 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.example.R
 import com.example.data.remote.CoarenaUrlBuilder
 import com.example.domain.model.AiModel
+import com.example.domain.model.ApiWireFormat
 import com.example.domain.model.AppError
 import com.example.domain.model.AppSettings
 import com.example.domain.model.CreditsInfo
 import com.example.domain.model.LimitsInfo
+import com.example.domain.model.RequestDiagnostic
 import com.example.domain.model.RequestHistoryItem
 import com.example.domain.model.ThemeMode
 import com.example.domain.repository.ChatHistoryRepository
@@ -36,6 +38,9 @@ data class SettingsUiState(
     val baseUrlInput: String = AppSettings.DEFAULT_BASE_URL,
     val defaultModelId: String? = null,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val useStreaming: Boolean = true,
+    val wireFormat: ApiWireFormat = ApiWireFormat.CHAT_COMPLETIONS,
+    val lastDiagnostic: RequestDiagnostic? = null,
     val models: List<AiModel> = emptyList(),
     val isLoadingModels: Boolean = false,
     val isTestingConnection: Boolean = false,
@@ -72,6 +77,15 @@ class SettingsViewModel @Inject constructor(
 
     init {
         loadInitialState()
+        observeDiagnostic()
+    }
+
+    private fun observeDiagnostic() {
+        viewModelScope.launch {
+            coarenaRepository.lastRequestDiagnostic.collect { diagnostic ->
+                _uiState.update { it.copy(lastDiagnostic = diagnostic) }
+            }
+        }
     }
 
     private fun loadInitialState() {
@@ -84,6 +98,9 @@ class SettingsViewModel @Inject constructor(
                     baseUrlInput = settings.baseUrl,
                     defaultModelId = settings.defaultModelId,
                     themeMode = settings.themeMode,
+                    useStreaming = settings.useStreaming,
+                    wireFormat = settings.wireFormat,
+                    lastDiagnostic = coarenaRepository.lastRequestDiagnostic.value,
                 )
             }
             if (hasKey) {
@@ -145,6 +162,22 @@ class SettingsViewModel @Inject constructor(
         _uiState.update { it.copy(themeMode = themeMode) }
         viewModelScope.launch {
             settingsRepository.saveThemeMode(themeMode)
+        }
+    }
+
+    /** Updates whether SSE streaming (`stream: true`) is enabled for chat requests. */
+    fun setUseStreaming(enabled: Boolean) {
+        _uiState.update { it.copy(useStreaming = enabled) }
+        viewModelScope.launch {
+            settingsRepository.saveUseStreaming(enabled)
+        }
+    }
+
+    /** Updates the OpenAI wire endpoint mode (`/chat/completions` vs `/responses`). */
+    fun setWireFormat(wireFormat: ApiWireFormat) {
+        _uiState.update { it.copy(wireFormat = wireFormat) }
+        viewModelScope.launch {
+            settingsRepository.saveWireFormat(wireFormat)
         }
     }
 

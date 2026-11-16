@@ -2,16 +2,21 @@ package com.example.data.remote
 
 import com.example.data.security.SecretRedactor
 import com.example.domain.model.AiModel
+import com.example.domain.model.ApiWireFormat
 import com.example.domain.model.AppError
 import com.example.domain.model.ChatMessage
 import com.example.domain.model.ChatStreamEvent
 import com.example.domain.model.CreditsInfo
 import com.example.domain.model.LimitsInfo
 import com.example.domain.model.MessageRole
+import com.example.domain.model.RequestDiagnostic
 import com.example.domain.model.RequestHistoryItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
@@ -41,6 +46,11 @@ class CoarenaNetworkClient @Inject constructor(
     private val parser: CoarenaApiParser,
     private val json: Json,
 ) {
+
+    private val _lastRequestDiagnostic = MutableStateFlow<RequestDiagnostic?>(null)
+
+    /** Latest non-secret request diagnostic snapshot for troubleshooting. */
+    val lastRequestDiagnostic: StateFlow<RequestDiagnostic?> = _lastRequestDiagnostic.asStateFlow()
 
     /**
      * Fetches available models from `{baseUrl}/models`.
@@ -79,9 +89,9 @@ class CoarenaNetworkClient @Inject constructor(
     }
 
     /**
-     * Sends chat messages to `{baseUrl}/chat/completions` with `stream: true`.
-     * Automatically falls back to `stream: false` if streaming fails before emitting tokens
-     * or if the endpoint returns standard JSON.
+     * Sends chat messages to `{baseUrl}/chat/completions` or `{baseUrl}/responses`.
+     * When [useStreaming] is true, streams SSE deltas and falls back to `stream: false`
+     * if streaming fails before emitting tokens or if the endpoint returns standard JSON.
      */
     fun streamChatCompletion(
         baseUrl: String,
@@ -89,28 +99,77 @@ class CoarenaNetworkClient @Inject constructor(
         modelId: String,
         history: List<ChatMessage>,
         systemPrompt: String,
+        useStreaming: Boolean = true,
+        wireFormat: ApiWireFormat = ApiWireFormat.CHAT_COMPLETIONS,
     ): Flow<ChatStreamEvent> = flow {
         val trimmedKey = apiKey.trim()
         if (trimmedKey.isEmpty()) {
             throw CoarenaApiException(AppError.MissingApiKey())
         }
-        val endpoint = CoarenaUrlBuilder.requireValidEndpoint(baseUrl, "chat/completions")
+        val trimmedModelId = modelId.trim()
+        val endpointPath = if (wireFormat == ApiWireFormat.RESPONSES) {
+            "responses"
+        } else {
+            "chat/completions"
+        }
+        val endpoint = CoarenaUrlBuilder.requireValidEndpoint(baseUrl, endpointPath)
             .getOrThrow()
 
-        val dtoMessages = buildList {
+        val conversationMessages = history
+            .filter { !it.isError && it.content.isNotBlank() }
+            .map { msg -> ChatMessageDto(role = msg.role.apiValue, content = msg.content) }
+
+        val chatMessagesWithSystem = buildList {
             if (systemPrompt.isNotBlank()) {
                 add(ChatMessageDto(role = MessageRole.SYSTEM.apiValue, content = systemPrompt))
             }
-            history.filter { !it.isError && it.content.isNotBlank() }.forEach { msg ->
-                add(ChatMessageDto(role = msg.role.apiValue, content = msg.content))
+            addAll(conversationMessages)
+        }
+
+        fun encodePayload(stream: Boolean): String {
+            return if (wireFormat == ApiWireFormat.RESPONSES) {
+                json.encodeToString(
+                    ResponsesRequestDto(
+                        model = trimmedModelId,
+                        input = conversationMessages,
+                        instructions = systemPrompt.takeIf { it.isNotBlank() },
+                        stream = stream,
+                    ),
+                )
+            } else {
+                json.encodeToString(
+                    ChatCompletionRequestDto(
+                        model = trimmedModelId,
+                        messages = chatMessagesWithSystem,
+                        stream = stream,
+                    ),
+                )
             }
         }
 
-        val streamingRequestDto = ChatCompletionRequestDto(
-            model = modelId.trim(),
-            messages = dtoMessages,
-            stream = true,
+        _lastRequestDiagnostic.value = RequestDiagnostic(
+            endpointUrl = endpoint,
+            sentModelId = trimmedModelId,
+            stream = useStreaming,
+            wireFormat = wireFormat,
         )
+
+        if (!useStreaming) {
+            val nonStreamingResult = executeNonStreamingJson(
+                endpoint = endpoint,
+                apiKey = trimmedKey,
+                requestBodyJson = encodePayload(stream = false),
+                sentModelId = trimmedModelId,
+                wireFormat = wireFormat,
+            )
+            nonStreamingResult.fold(
+                onSuccess = { completed -> emit(completed) },
+                onFailure = { err ->
+                    throw (err as? CoarenaApiException) ?: mapException(err, trimmedKey)
+                },
+            )
+            return@flow
+        }
 
         var emittedAnyDelta = false
         var lastTotalTokens: Int? = null
@@ -118,7 +177,7 @@ class CoarenaNetworkClient @Inject constructor(
         var streamingFailure: CoarenaApiException? = null
 
         try {
-            val requestBodyJson = json.encodeToString(streamingRequestDto)
+            val requestBodyJson = encodePayload(stream = true)
             val okRequest = Request.Builder()
                 .url(endpoint)
                 .header("Authorization", "Bearer $trimmedKey")
@@ -128,10 +187,23 @@ class CoarenaNetworkClient @Inject constructor(
                 .build()
 
             okHttpClient.newCall(okRequest).execute().use { response ->
+                val statusCode = response.code
+                val headerModelId = response.header("x-model")?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: response.header("x-coarena-model")?.trim()?.takeIf { it.isNotEmpty() }
+
+                _lastRequestDiagnostic.value = RequestDiagnostic(
+                    endpointUrl = endpoint,
+                    sentModelId = trimmedModelId,
+                    stream = true,
+                    wireFormat = wireFormat,
+                    httpStatusCode = statusCode,
+                    headerModelId = headerModelId,
+                )
+
                 if (!response.isSuccessful) {
                     val errorBody = response.body?.string()
-                    val mapped = mapHttpStatus(response.code, errorBody, trimmedKey)
-                    if (isNonRetryableAuthOrRateError(response.code)) {
+                    val mapped = mapHttpStatus(statusCode, errorBody, trimmedKey)
+                    if (isNonRetryableAuthOrRateError(statusCode)) {
                         throw CoarenaApiException(mapped)
                     }
                     streamingFailure = CoarenaApiException(mapped)
@@ -139,8 +211,6 @@ class CoarenaNetworkClient @Inject constructor(
                     return@use
                 }
 
-                val headerModelId = response.header("x-model")?.trim()?.takeIf { it.isNotEmpty() }
-                    ?: response.header("x-coarena-model")?.trim()?.takeIf { it.isNotEmpty() }
                 val contentType = response.header("Content-Type").orEmpty().lowercase()
                 val body = response.body
                     ?: throw CoarenaApiException(AppError.SerializationError("Empty response body"))
@@ -149,13 +219,15 @@ class CoarenaNetworkClient @Inject constructor(
                     // Server ignored stream=true and returned a single JSON completion
                     val raw = body.string()
                     val completed = parser.parseChatCompletionJson(raw)
-                    emit(
-                        if (completed.responseModelId.isNullOrBlank() && headerModelId != null) {
-                            completed.copy(responseModelId = headerModelId)
-                        } else {
-                            completed
-                        },
+                    val resolvedCompleted = if (completed.responseModelId.isNullOrBlank() && headerModelId != null) {
+                        completed.copy(responseModelId = headerModelId)
+                    } else {
+                        completed
+                    }
+                    _lastRequestDiagnostic.value = _lastRequestDiagnostic.value?.copy(
+                        responseModelId = resolvedCompleted.responseModelId,
                     )
+                    emit(resolvedCompleted)
                     return@flow
                 }
 
@@ -199,10 +271,22 @@ class CoarenaNetworkClient @Inject constructor(
                         // Some OpenAI-compatible proxies return plain JSON without Content-Type: application/json
                         val fullBuffer = trimmedLine + (source.readUtf8())
                         val completed = parser.parseChatCompletionJson(fullBuffer)
-                        emit(completed)
+                        val resolvedCompleted = if (completed.responseModelId.isNullOrBlank() && headerModelId != null) {
+                            completed.copy(responseModelId = headerModelId)
+                        } else {
+                            completed
+                        }
+                        _lastRequestDiagnostic.value = _lastRequestDiagnostic.value?.copy(
+                            responseModelId = resolvedCompleted.responseModelId,
+                        )
+                        emit(resolvedCompleted)
                         return@flow
                     }
                 }
+
+                _lastRequestDiagnostic.value = _lastRequestDiagnostic.value?.copy(
+                    responseModelId = lastResponseModelId,
+                )
 
                 if (emittedAnyDelta) {
                     emit(
@@ -237,10 +321,12 @@ class CoarenaNetworkClient @Inject constructor(
         }
 
         if (shouldFallbackToNonStreaming) {
-            val fallbackResult = executeNonStreamingChat(
+            val fallbackResult = executeNonStreamingJson(
                 endpoint = endpoint,
                 apiKey = trimmedKey,
-                requestDto = streamingRequestDto.copy(stream = false),
+                requestBodyJson = encodePayload(stream = false),
+                sentModelId = trimmedModelId,
+                wireFormat = wireFormat,
             )
             fallbackResult.fold(
                 onSuccess = { completed -> emit(completed) },
@@ -251,26 +337,54 @@ class CoarenaNetworkClient @Inject constructor(
         }
     }.flowOn(Dispatchers.IO)
 
-    private suspend fun executeNonStreamingChat(
+    private suspend fun executeNonStreamingJson(
         endpoint: String,
         apiKey: String,
-        requestDto: ChatCompletionRequestDto,
+        requestBodyJson: String,
+        sentModelId: String,
+        wireFormat: ApiWireFormat,
     ): Result<ChatStreamEvent.Completed> = withContext(Dispatchers.IO) {
         try {
-            val response = retrofitService.postChatCompletion(
-                url = endpoint,
-                authorization = "Bearer $apiKey",
-                request = requestDto,
-            )
-            val headerModelId = response.headers()["x-model"]?.trim()?.takeIf { it.isNotEmpty() }
-                ?: response.headers()["x-coarena-model"]?.trim()?.takeIf { it.isNotEmpty() }
-            parseRetrofitResponse(response, apiKey) { rawBody ->
+            val request = Request.Builder()
+                .url(endpoint)
+                .header("Authorization", "Bearer $apiKey")
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .post(requestBodyJson.toRequestBody("application/json".toMediaType()))
+                .build()
+
+            okHttpClient.newCall(request).execute().use { response ->
+                val statusCode = response.code
+                val headerModelId = response.header("x-model")?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: response.header("x-coarena-model")?.trim()?.takeIf { it.isNotEmpty() }
+
+                _lastRequestDiagnostic.value = RequestDiagnostic(
+                    endpointUrl = endpoint,
+                    sentModelId = sentModelId,
+                    stream = false,
+                    wireFormat = wireFormat,
+                    httpStatusCode = statusCode,
+                    headerModelId = headerModelId,
+                )
+
+                if (!response.isSuccessful) {
+                    val errBody = response.body?.string()
+                    return@withContext Result.failure(
+                        CoarenaApiException(mapHttpStatus(statusCode, errBody, apiKey)),
+                    )
+                }
+
+                val rawBody = response.body?.string().orEmpty()
                 val completed = parser.parseChatCompletionJson(rawBody)
-                if (completed.responseModelId.isNullOrBlank() && headerModelId != null) {
+                val resolvedCompleted = if (completed.responseModelId.isNullOrBlank() && headerModelId != null) {
                     completed.copy(responseModelId = headerModelId)
                 } else {
                     completed
                 }
+                _lastRequestDiagnostic.value = _lastRequestDiagnostic.value?.copy(
+                    responseModelId = resolvedCompleted.responseModelId,
+                )
+                Result.success(resolvedCompleted)
             }
         } catch (e: Exception) {
             Result.failure(mapException(e, apiKey))

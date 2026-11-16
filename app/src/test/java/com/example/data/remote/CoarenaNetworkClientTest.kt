@@ -1,5 +1,6 @@
 package com.example.data.remote
 
+import com.example.domain.model.ApiWireFormat
 import com.example.domain.model.AppError
 import com.example.domain.model.ChatMessage
 import com.example.domain.model.ChatStreamEvent
@@ -212,5 +213,88 @@ class CoarenaNetworkClientTest {
         val err = (serverErr.exceptionOrNull() as CoarenaApiException).appError
         assertTrue(err is AppError.ServerError)
         assertEquals(503, (err as AppError.ServerError).statusCode)
+    }
+
+    @Test
+    fun `uses responses endpoint and records lastRequestDiagnostic when wireFormat is RESPONSES`() = runTest {
+        val sseBody = """
+            data: {"type":"response.output_text.delta","delta":"DeepSeek OK","response":{"model":"deepseek-v4-1-flash-1017"}}
+
+            data: {"type":"response.completed","response":{"model":"deepseek-v4-1-flash-1017","usage":{"input_tokens":5,"output_tokens":3}}}
+
+        """.trimIndent()
+
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(sseBody),
+        )
+
+        val secretKey = "sk-secret-responses-key"
+        val events = client.streamChatCompletion(
+            baseUrl = baseUrl,
+            apiKey = secretKey,
+            modelId = "deepseek-v4-1-flash-1017",
+            history = listOf(ChatMessage(id = "1", role = MessageRole.USER, content = "Hi")),
+            systemPrompt = "Be concise.",
+            useStreaming = true,
+            wireFormat = ApiWireFormat.RESPONSES,
+        ).toList()
+
+        val recorded = server.takeRequest()
+        assertTrue(recorded.path!!.endsWith("/api/v1/responses"))
+        val sentBody = recorded.body.readUtf8()
+        assertTrue(sentBody.contains(""""model":"deepseek-v4-1-flash-1017""""))
+        assertTrue(sentBody.contains(""""input":"""))
+        assertTrue(sentBody.contains(""""instructions":"Be concise.""""))
+
+        assertEquals(2, events.size)
+        assertEquals("DeepSeek OK", (events[0] as ChatStreamEvent.Delta).textChunk)
+        val completed = events[1] as ChatStreamEvent.Completed
+        assertEquals("deepseek-v4-1-flash-1017", completed.responseModelId)
+        assertEquals(8, completed.totalTokens)
+
+        val diag = client.lastRequestDiagnostic.value!!
+        assertEquals(ApiWireFormat.RESPONSES, diag.wireFormat)
+        assertEquals("deepseek-v4-1-flash-1017", diag.sentModelId)
+        assertEquals("deepseek-v4-1-flash-1017", diag.responseModelId)
+        assertEquals(200, diag.httpStatusCode)
+        assertFalse(diag.toString().contains(secretKey))
+    }
+
+    @Test
+    fun `sends stream false directly when useStreaming is disabled`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"model":"deepseek-v4-1-flash-1017","choices":[{"message":{"role":"assistant","content":"Direct JSON"}}]}"""),
+        )
+
+        val events = client.streamChatCompletion(
+            baseUrl = baseUrl,
+            apiKey = "sk-test-non-stream",
+            modelId = "deepseek-v4-1-flash-1017",
+            history = listOf(ChatMessage(id = "1", role = MessageRole.USER, content = "Ping")),
+            systemPrompt = "",
+            useStreaming = false,
+            wireFormat = ApiWireFormat.CHAT_COMPLETIONS,
+        ).toList()
+
+        val recorded = server.takeRequest()
+        assertTrue(recorded.path!!.endsWith("/api/v1/chat/completions"))
+        val sentBody = recorded.body.readUtf8()
+        assertTrue(sentBody.contains(""""stream":false"""))
+        assertTrue(sentBody.contains(""""model":"deepseek-v4-1-flash-1017""""))
+
+        assertEquals(1, events.size)
+        val completed = events[0] as ChatStreamEvent.Completed
+        assertEquals("Direct JSON", completed.fullText)
+        assertEquals("deepseek-v4-1-flash-1017", completed.responseModelId)
+
+        val diag = client.lastRequestDiagnostic.value!!
+        assertFalse(diag.stream)
+        assertEquals(200, diag.httpStatusCode)
     }
 }

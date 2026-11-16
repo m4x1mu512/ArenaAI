@@ -388,8 +388,14 @@ fun ChatScreenContent(
                         }
 
                         if (uiState.messages.isEmpty()) {
+                            val selectedBadgeText = when {
+                                uiState.selectedModel != null && uiState.selectedModel!!.displayName != uiState.selectedModelId ->
+                                    "${uiState.selectedModel!!.displayName} (${uiState.selectedModelId})"
+                                uiState.selectedModel != null -> uiState.selectedModel!!.displayName
+                                else -> uiState.selectedModelId
+                            }
                             EmptyChatState(
-                                selectedModelName = uiState.selectedModel?.displayName ?: uiState.selectedModelId,
+                                selectedModelName = selectedBadgeText,
                                 onSelectPrompt = { prompt ->
                                     if (uiState.selectedModelId.isNullOrBlank()) {
                                         scope.launch { snackbarHostState.showSnackbar(selectModelFirstMsg) }
@@ -617,8 +623,6 @@ private fun ChatMessageBubble(
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = contentColor.copy(alpha = 0.75f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
                 if (message.isStreaming) {

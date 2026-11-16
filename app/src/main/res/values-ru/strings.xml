@@ -71,6 +71,15 @@
     <string name="settings_saved_snackbar">Настройки сохранены</string>
     <string name="settings_default_model_label">Модель по умолчанию</string>
     <string name="settings_default_model_none">Не выбрана</string>
+    <string name="settings_streaming_title">Потоковый вывод (SSE)</string>
+    <string name="settings_streaming_subtitle">Отключите, чтобы отправлять stream=false и получать единый JSON-ответ.</string>
+    <string name="settings_wire_format_title">Режим API-запроса</string>
+    <string name="settings_wire_format_subtitle">Обычные клиенты используют /chat/completions; клиенты вроде Codex — /responses.</string>
+    <string name="settings_last_request_title">Диагностика последнего запроса</string>
+    <string name="settings_diag_endpoint">Эндпоинт</string>
+    <string name="settings_diag_sent_model">Отправленное поле model</string>
+    <string name="settings_diag_returned_model">Модель в ответе сервера</string>
+    <string name="settings_diag_http_status">Статус ответа</string>
     <string name="settings_section_appearance">Оформление</string>
     <string name="settings_theme_system">Системная</string>
     <string name="settings_theme_light">Светлая</string>

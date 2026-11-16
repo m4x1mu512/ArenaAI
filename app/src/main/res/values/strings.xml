@@ -71,6 +71,15 @@
     <string name="settings_saved_snackbar">Settings saved</string>
     <string name="settings_default_model_label">Default Model</string>
     <string name="settings_default_model_none">Not selected</string>
+    <string name="settings_streaming_title">SSE Streaming</string>
+    <string name="settings_streaming_subtitle">Disable to send stream=false and wait for a single JSON response.</string>
+    <string name="settings_wire_format_title">API Endpoint Mode</string>
+    <string name="settings_wire_format_subtitle">Standard OpenAI clients use /chat/completions; tools like Codex use /responses.</string>
+    <string name="settings_last_request_title">Last Chat Request Diagnostics</string>
+    <string name="settings_diag_endpoint">Endpoint</string>
+    <string name="settings_diag_sent_model">Sent model field</string>
+    <string name="settings_diag_returned_model">Returned model field</string>
+    <string name="settings_diag_http_status">Response status</string>
     <string name="settings_section_appearance">Appearance</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Light</string>

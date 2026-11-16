@@ -3,9 +3,11 @@ package com.example.data.local
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.domain.model.ApiWireFormat
 import com.example.domain.model.AppSettings
 import com.example.domain.model.ThemeMode
 import kotlinx.coroutines.flow.Flow
@@ -16,7 +18,8 @@ private val Context.coarenaDataStore: DataStore<Preferences> by preferencesDataS
 )
 
 /**
- * Persists non-secret user settings (Base URL, default model, theme mode) in Jetpack DataStore.
+ * Persists non-secret user settings (Base URL, default model, theme mode, streaming, wire format)
+ * in Jetpack DataStore.
  */
 class PreferencesManager(
     private val context: Context,
@@ -29,10 +32,16 @@ class PreferencesManager(
         val themeMode = prefs[KEY_THEME_MODE]?.let { raw ->
             runCatching { ThemeMode.valueOf(raw) }.getOrNull()
         } ?: ThemeMode.SYSTEM
+        val useStreaming = prefs[KEY_USE_STREAMING] ?: true
+        val wireFormat = prefs[KEY_WIRE_FORMAT]?.let { raw ->
+            runCatching { ApiWireFormat.valueOf(raw) }.getOrNull()
+        } ?: ApiWireFormat.CHAT_COMPLETIONS
         PreferencesSnapshot(
             baseUrl = rawUrl,
             defaultModelId = defaultModel,
             themeMode = themeMode,
+            useStreaming = useStreaming,
+            wireFormat = wireFormat,
         )
     }
 
@@ -61,6 +70,20 @@ class PreferencesManager(
         }
     }
 
+    /** Saves whether SSE streaming should be used by default. */
+    suspend fun setUseStreaming(enabled: Boolean) {
+        context.coarenaDataStore.edit { prefs ->
+            prefs[KEY_USE_STREAMING] = enabled
+        }
+    }
+
+    /** Saves the selected [wireFormat]. */
+    suspend fun setWireFormat(wireFormat: ApiWireFormat) {
+        context.coarenaDataStore.edit { prefs ->
+            prefs[KEY_WIRE_FORMAT] = wireFormat.name
+        }
+    }
+
     /** Removes all stored preferences. */
     suspend fun clearAll() {
         context.coarenaDataStore.edit { prefs ->
@@ -72,11 +95,15 @@ class PreferencesManager(
         val baseUrl: String,
         val defaultModelId: String?,
         val themeMode: ThemeMode,
+        val useStreaming: Boolean,
+        val wireFormat: ApiWireFormat,
     )
 
     private companion object {
         val KEY_BASE_URL = stringPreferencesKey("base_url")
         val KEY_DEFAULT_MODEL = stringPreferencesKey("default_model_id")
         val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+        val KEY_USE_STREAMING = booleanPreferencesKey("use_streaming")
+        val KEY_WIRE_FORMAT = stringPreferencesKey("wire_format")
     }
 }

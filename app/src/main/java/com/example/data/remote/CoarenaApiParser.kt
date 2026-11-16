@@ -67,13 +67,11 @@ class CoarenaApiParser(
                 }
                 is JsonObject -> {
                     val rawId = element.stringValue("id")?.trim()
-                    val specificModelId = element.stringValue("model_id", "api_name", "slug")?.trim()
-                    val fallbackModelField = element.stringValue("model")?.trim()
+                    val fallbackModel = element.stringValue("model_id", "api_name", "slug", "model")?.trim()
                     val id = when {
-                        specificModelId != null -> specificModelId
-                        rawId != null && (rawId.all { it.isDigit() } || isUuid(rawId)) && fallbackModelField != null -> fallbackModelField
+                        rawId != null && (rawId.all { it.isDigit() } || isUuid(rawId)) && fallbackModel != null -> fallbackModel
                         rawId != null -> rawId
-                        fallbackModelField != null -> fallbackModelField
+                        fallbackModel != null -> fallbackModel
                         else -> element.stringValue("name")?.trim()
                     } ?: return@mapNotNull null
 
@@ -93,7 +91,7 @@ class CoarenaApiParser(
     }
 
     /**
-     * Parses a non-streaming `POST /chat/completions` JSON response.
+     * Parses a non-streaming `POST /chat/completions` or `POST /responses` JSON response.
      */
     fun parseChatCompletionJson(rawJson: String): ChatStreamEvent.Completed {
         val root = json.parseToJsonElement(rawJson).jsonObject
@@ -101,19 +99,21 @@ class CoarenaApiParser(
         val firstChoice = choices?.firstOrNull() as? JsonObject
 
         val content = extractChoiceText(firstChoice)
+            ?: extractResponsesOutputText(root["output"] as? JsonArray)
             ?: root.stringValue("output_text", "text", "content", "response")
             ?: throw IllegalStateException("Missing assistant content in response")
 
-        val usageObj = root["usage"] as? JsonObject
+        val nestedResponse = root["response"] as? JsonObject
+        val usageObj = (root["usage"] as? JsonObject) ?: (nestedResponse?.get("usage") as? JsonObject)
         val totalTokens = usageObj?.intValue("total_tokens")
             ?: run {
-                val prompt = usageObj?.intValue("prompt_tokens")
-                val completion = usageObj?.intValue("completion_tokens")
+                val prompt = usageObj?.intValue("prompt_tokens", "input_tokens")
+                val completion = usageObj?.intValue("completion_tokens", "output_tokens")
                 if (prompt != null && completion != null) prompt + completion else null
             }
 
         val responseModelId = root.stringValue("model")
-            ?: (root["response"] as? JsonObject)?.stringValue("model")
+            ?: nestedResponse?.stringValue("model")
 
         return ChatStreamEvent.Completed(
             fullText = content,
@@ -140,10 +140,28 @@ class CoarenaApiParser(
             throw IllegalStateException(message)
         }
 
+        val nestedResponse = root["response"] as? JsonObject
         val responseModelId = root.stringValue("model")
-            ?: (root["response"] as? JsonObject)?.stringValue("model")
-        val usageObj = root["usage"] as? JsonObject
+            ?: nestedResponse?.stringValue("model")
+        val usageObj = (root["usage"] as? JsonObject) ?: (nestedResponse?.get("usage") as? JsonObject)
         val totalTokens = usageObj?.intValue("total_tokens")
+            ?: run {
+                val input = usageObj?.intValue("prompt_tokens", "input_tokens")
+                val output = usageObj?.intValue("completion_tokens", "output_tokens")
+                if (input != null && output != null) input + output else null
+            }
+
+        val eventType = root.stringValue("type")
+        if (eventType == "response.output_text.delta") {
+            val delta = root.stringValue("delta")
+            if (!delta.isNullOrEmpty()) {
+                return SseParseResult.Chunk(
+                    text = delta,
+                    totalTokens = totalTokens,
+                    responseModelId = responseModelId,
+                )
+            }
+        }
 
         val choices = root["choices"] as? JsonArray
         val firstChoice = choices?.firstOrNull() as? JsonObject
@@ -162,6 +180,24 @@ class CoarenaApiParser(
             !responseModelId.isNullOrBlank() -> SseParseResult.ModelMetadata(responseModelId)
             else -> SseParseResult.Ignore
         }
+    }
+
+    private fun extractResponsesOutputText(output: JsonArray?): String? {
+        if (output == null) return null
+        val collected = buildString {
+            for (item in output) {
+                val obj = item as? JsonObject ?: continue
+                val contentArray = obj["content"] as? JsonArray ?: continue
+                for (part in contentArray) {
+                    val partObj = part as? JsonObject ?: continue
+                    val text = partObj.stringValue("text", "output_text", "content")
+                    if (!text.isNullOrEmpty()) {
+                        append(text)
+                    }
+                }
+            }
+        }
+        return collected.takeIf { it.isNotEmpty() }
     }
 
     /**

@@ -2,13 +2,13 @@ package com.example.data.local
 
 import com.example.data.remote.CoarenaUrlBuilder
 import com.example.data.security.SecureKeyStorage
+import com.example.domain.model.ApiWireFormat
 import com.example.domain.model.AppSettings
 import com.example.domain.model.ThemeMode
 import com.example.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onStart
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -36,6 +36,8 @@ class SettingsRepositoryImpl @Inject constructor(
             defaultModelId = prefs.defaultModelId,
             themeMode = prefs.themeMode,
             hasApiKey = hasKey,
+            useStreaming = prefs.useStreaming,
+            wireFormat = prefs.wireFormat,
         )
     }.onStart {
         refreshKeyPresence()
@@ -73,6 +75,14 @@ class SettingsRepositoryImpl @Inject constructor(
 
     override suspend fun saveThemeMode(themeMode: ThemeMode) {
         preferencesManager.setThemeMode(themeMode)
+    }
+
+    override suspend fun saveUseStreaming(enabled: Boolean) {
+        preferencesManager.setUseStreaming(enabled)
+    }
+
+    override suspend fun saveWireFormat(wireFormat: ApiWireFormat) {
+        preferencesManager.setWireFormat(wireFormat)
     }
 
     override suspend fun deleteApiKey() {

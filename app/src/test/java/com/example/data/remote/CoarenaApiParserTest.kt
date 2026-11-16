@@ -30,7 +30,7 @@ class CoarenaApiParserTest {
     }
 
     @Test
-    fun `prefers slug, api_name, or model_id over record id`() {
+    fun `prefers OpenAI id unless id is numeric or uuid`() {
         val json = """
             {
               "data": [
@@ -42,11 +42,13 @@ class CoarenaApiParserTest {
         """.trimIndent()
 
         val models = parser.parseModels(json)
-        assertEquals(2, models.size)
+        assertEquals(3, models.size)
         assertEquals("deepseek-v4-1-flash-1017", models[0].id)
         assertEquals("DeepSeek v4.1 Flash", models[0].displayName)
         assertEquals("gpt-6-luna", models[1].id)
         assertEquals("GPT-6 Luna", models[1].displayName)
+        assertEquals("rec_999", models[2].id)
+        assertEquals("DeepSeek API", models[2].displayName)
     }
 
     @Test
@@ -63,6 +65,44 @@ class CoarenaApiParserTest {
         assertEquals(SseParseResult.ModelMetadata("gpt-6-luna"), metaResult)
 
         assertEquals(SseParseResult.Done, parser.parseSseDataPayload("[DONE]"))
+    }
+
+    @Test
+    fun `parses OpenAI Responses API SSE delta and JSON completion`() {
+        val sseDelta = """{"type":"response.output_text.delta","delta":"Привет","response":{"model":"deepseek-v4-1-flash-1017"}}"""
+        val sseResult = parser.parseSseDataPayload(sseDelta)
+        assertTrue(sseResult is SseParseResult.Chunk)
+        val chunk = sseResult as SseParseResult.Chunk
+        assertEquals("Привет", chunk.text)
+        assertEquals("deepseek-v4-1-flash-1017", chunk.responseModelId)
+
+        val sseCompleted = """{"type":"response.completed","response":{"model":"deepseek-v4-1-flash-1017","usage":{"input_tokens":10,"output_tokens":5}}}"""
+        val usageResult = parser.parseSseDataPayload(sseCompleted)
+        assertTrue(usageResult is SseParseResult.UsageOnly)
+        val usage = usageResult as SseParseResult.UsageOnly
+        assertEquals(15, usage.totalTokens)
+        assertEquals("deepseek-v4-1-flash-1017", usage.responseModelId)
+
+        val json = """
+            {
+              "id": "resp_123",
+              "model": "deepseek-v4-1-flash-1017",
+              "output": [
+                {
+                  "type": "message",
+                  "role": "assistant",
+                  "content": [
+                    {"type": "output_text", "text": "Hello from Responses API!"}
+                  ]
+                }
+              ],
+              "usage": {"input_tokens": 11, "output_tokens": 9}
+            }
+        """.trimIndent()
+        val completed = parser.parseChatCompletionJson(json)
+        assertEquals("Hello from Responses API!", completed.fullText)
+        assertEquals(20, completed.totalTokens)
+        assertEquals("deepseek-v4-1-flash-1017", completed.responseModelId)
     }
 
     @Test
