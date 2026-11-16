@@ -114,4 +114,18 @@
     <string name="error_missing_api_key">API-ключ не задан. Введите ваш Coarena API key.</string>
     <string name="error_invalid_url">Некорректный Base URL. Используйте адрес вида https://…</string>
     <string name="error_unknown">Произошла непредвиденная ошибка.</string>
+    <!-- Chat History -->
+    <string name="history_button_cd">История чатов</string>
+    <string name="history_sheet_title">История сообщений</string>
+    <string name="history_search_placeholder">Поиск по чатам…</string>
+    <string name="history_empty_title">История пока пуста</string>
+    <string name="history_empty_subtitle">Отправленные сообщения и ответы моделей будут автоматически сохраняться локально на устройстве.</string>
+    <string name="history_new_chat">Новый чат</string>
+    <string name="history_clear_all">Очистить всё</string>
+    <string name="history_clear_all_title">Очистить историю чатов?</string>
+    <string name="history_clear_all_body">Все сохранённые диалоги и сообщения на этом устройстве будут безвозвратно удалены.</string>
+    <string name="history_delete_session_cd">Удалить диалог</string>
+    <string name="history_message_count_one">%1$d сообщение</string>
+    <string name="history_message_count_other">%1$d сообщ.</string>
+    <string name="history_active_badge">Текущий</string>
 </resources>

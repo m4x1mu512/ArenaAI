@@ -2,22 +2,27 @@ package com.example
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import com.example.domain.model.AiModel
 import com.example.domain.model.AppError
 import com.example.domain.model.AppSettings
 import com.example.domain.model.ChatMessage
+import com.example.domain.model.ChatSession
 import com.example.domain.model.ChatStreamEvent
 import com.example.domain.model.ConnectionTestResult
 import com.example.domain.model.CreditsInfo
 import com.example.domain.model.LimitsInfo
+import com.example.domain.model.MessageRole
 import com.example.domain.model.RequestHistoryItem
 import com.example.domain.model.ThemeMode
+import com.example.domain.repository.ChatHistoryRepository
 import com.example.domain.repository.CoarenaRepository
 import com.example.domain.repository.SettingsRepository
 import com.example.ui.chat.ChatScreen
@@ -30,6 +35,7 @@ import com.example.ui.theme.CoarenaTheme
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -39,7 +45,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], qualifiers = "w411dp-h891dp")
 class CoarenaUiTest {
 
     @get:Rule
@@ -85,13 +91,14 @@ class CoarenaUiTest {
     }
 
     @Test
-    fun chatScreen_sendsMessage_andDisplaysAssistantReply() {
+    fun chatScreen_sendsMessage_andSavesToHistory() {
         val fakeSettings = FakeSettingsRepository(initialKey = "sk-valid-123456")
         val fakeRepo = FakeCoarenaRepository(
             models = listOf(AiModel(id = "coarena-pro", displayName = "Coarena Pro")),
             replyChunks = listOf("Hello ", "from Coarena!"),
         )
-        val viewModel = ChatViewModel(fakeRepo, fakeSettings)
+        val fakeHistory = FakeChatHistoryRepository()
+        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory)
 
         composeRule.setContent {
             CoarenaTheme {
@@ -110,6 +117,78 @@ class CoarenaUiTest {
 
         composeRule.onNodeWithText("Hi AI").assertIsDisplayed()
         composeRule.onNodeWithText("Hello from Coarena!").assertIsDisplayed()
+
+        // Verify persisted into local history and visible in History sheet
+        composeRule.onNodeWithTag("chat_history_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("chat_history_sheet").assertIsDisplayed()
+        composeRule.onNodeWithTag("history_session_list").assertIsDisplayed()
+    }
+
+    @Test
+    fun chatScreen_restoresSavedSession_switchesAndDeletes() {
+        val fakeSettings = FakeSettingsRepository(initialKey = "sk-valid-123456")
+        val fakeRepo = FakeCoarenaRepository(
+            models = listOf(AiModel(id = "coarena-pro", displayName = "Coarena Pro")),
+        )
+        val fakeHistory = FakeChatHistoryRepository().apply {
+            seedSession(
+                sessionId = "session_old",
+                title = "Old Topic",
+                modelId = "coarena-pro",
+                updatedAt = 1000L,
+                messages = listOf(
+                    ChatMessage(id = "u1", role = MessageRole.USER, content = "Old question", timestampMillis = 1000L),
+                    ChatMessage(id = "a1", role = MessageRole.ASSISTANT, content = "Old answer", timestampMillis = 1001L),
+                ),
+            )
+            seedSession(
+                sessionId = "session_new",
+                title = "Recent Topic",
+                modelId = "coarena-pro",
+                updatedAt = 2000L,
+                messages = listOf(
+                    ChatMessage(id = "u2", role = MessageRole.USER, content = "Latest question", timestampMillis = 2000L),
+                    ChatMessage(id = "a2", role = MessageRole.ASSISTANT, content = "Latest answer", timestampMillis = 2001L),
+                ),
+            )
+        }
+        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory)
+
+        composeRule.setContent {
+            CoarenaTheme {
+                ChatScreen(
+                    onOpenSettings = {},
+                    viewModel = viewModel,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        // Automatically restores the latest conversation
+        composeRule.onNodeWithText("Latest question").assertIsDisplayed()
+        composeRule.onNodeWithText("Latest answer").assertIsDisplayed()
+
+        // Open history sheet and switch to the older conversation
+        composeRule.onNodeWithTag("chat_history_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("history_session_session_old").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Old question").assertIsDisplayed()
+        composeRule.onNodeWithText("Old answer").assertIsDisplayed()
+
+        // Open history sheet again and delete session_old
+        composeRule.onNodeWithTag("chat_history_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("history_session_list")
+            .performScrollToNode(hasTestTag("history_delete_session_session_old"))
+        composeRule.onNodeWithTag("history_delete_session_session_old").performClick()
+        composeRule.waitUntil(timeoutMillis = 3_000) {
+            !fakeHistory.containsSession("session_old")
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("history_session_session_old").assertDoesNotExist()
     }
 
     @Test
@@ -120,7 +199,8 @@ class CoarenaUiTest {
             models = listOf(AiModel(id = "coarena-pro", displayName = "Coarena Pro")),
             chatError = AppError.Unauthorized("HTTP 401: Invalid key [REDACTED]"),
         )
-        val viewModel = ChatViewModel(fakeRepo, fakeSettings)
+        val fakeHistory = FakeChatHistoryRepository()
+        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory)
 
         composeRule.setContent {
             CoarenaTheme {
@@ -149,7 +229,8 @@ class CoarenaUiTest {
         val fakeRepo = FakeCoarenaRepository(
             models = listOf(AiModel(id = "coarena-pro", displayName = "Coarena Pro")),
         )
-        val viewModel = SettingsViewModel(fakeSettings, fakeRepo)
+        val fakeHistory = FakeChatHistoryRepository()
+        val viewModel = SettingsViewModel(fakeSettings, fakeRepo, fakeHistory)
         var navigatedToSetup = false
 
         composeRule.setContent {
@@ -217,6 +298,91 @@ class CoarenaUiTest {
         override suspend fun clearAllLocalData() {
             storedKey = null
             state.value = AppSettings()
+        }
+    }
+
+    private class FakeChatHistoryRepository : ChatHistoryRepository {
+        private val sessionsMap = LinkedHashMap<String, ChatSession>()
+        private val messagesMap = LinkedHashMap<String, MutableList<ChatMessage>>()
+        private val sessionsFlow = MutableStateFlow<List<ChatSession>>(emptyList())
+
+        fun containsSession(sessionId: String): Boolean = sessionsMap.containsKey(sessionId)
+
+        fun seedSession(
+            sessionId: String,
+            title: String,
+            modelId: String?,
+            updatedAt: Long,
+            messages: List<ChatMessage>,
+        ) {
+            messagesMap[sessionId] = messages.toMutableList()
+            sessionsMap[sessionId] = ChatSession(
+                id = sessionId,
+                title = title,
+                modelId = modelId,
+                createdAtMillis = updatedAt,
+                updatedAtMillis = updatedAt,
+                messageCount = messages.size,
+                lastMessagePreview = messages.lastOrNull()?.content.orEmpty(),
+            )
+            emitSessions()
+        }
+
+        private fun emitSessions() {
+            sessionsFlow.value = sessionsMap.values.sortedByDescending { it.updatedAtMillis }
+        }
+
+        override fun observeSessions(): Flow<List<ChatSession>> = sessionsFlow
+
+        override fun observeMessages(sessionId: String): Flow<List<ChatMessage>> {
+            return sessionsFlow.map { messagesMap[sessionId].orEmpty() }
+        }
+
+        override suspend fun getLatestSession(): ChatSession? {
+            return sessionsMap.values.maxByOrNull { it.updatedAtMillis }
+        }
+
+        override suspend fun getMessages(sessionId: String): List<ChatMessage> {
+            return messagesMap[sessionId].orEmpty().sortedBy { it.timestampMillis }
+        }
+
+        override suspend fun saveMessage(
+            sessionId: String,
+            sessionTitle: String,
+            modelId: String?,
+            message: ChatMessage,
+        ) {
+            val list = messagesMap.getOrPut(sessionId) { mutableListOf() }
+            list.removeAll { it.id == message.id }
+            list.add(message)
+            val existing = sessionsMap[sessionId]
+            sessionsMap[sessionId] = ChatSession(
+                id = sessionId,
+                title = existing?.title ?: sessionTitle,
+                modelId = modelId ?: existing?.modelId,
+                createdAtMillis = existing?.createdAtMillis ?: message.timestampMillis,
+                updatedAtMillis = message.timestampMillis,
+                messageCount = list.size,
+                lastMessagePreview = message.content,
+            )
+            emitSessions()
+        }
+
+        override suspend fun deleteMessage(messageId: String) {
+            messagesMap.values.forEach { list -> list.removeAll { it.id == messageId } }
+            emitSessions()
+        }
+
+        override suspend fun deleteSession(sessionId: String) {
+            sessionsMap.remove(sessionId)
+            messagesMap.remove(sessionId)
+            emitSessions()
+        }
+
+        override suspend fun clearAllHistory() {
+            sessionsMap.clear()
+            messagesMap.clear()
+            emitSessions()
         }
     }
 

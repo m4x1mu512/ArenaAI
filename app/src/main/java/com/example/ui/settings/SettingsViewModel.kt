@@ -11,6 +11,7 @@ import com.example.domain.model.CreditsInfo
 import com.example.domain.model.LimitsInfo
 import com.example.domain.model.RequestHistoryItem
 import com.example.domain.model.ThemeMode
+import com.example.domain.repository.ChatHistoryRepository
 import com.example.domain.repository.CoarenaRepository
 import com.example.domain.repository.SettingsRepository
 import com.example.ui.common.toAppError
@@ -63,6 +64,7 @@ data class SettingsUiState(
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val coarenaRepository: CoarenaRepository,
+    private val chatHistoryRepository: ChatHistoryRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -300,10 +302,11 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /** Clears all local credentials and preferences and invokes [onDataCleared]. */
+    /** Clears all local credentials, preferences, and saved chat history and invokes [onDataCleared]. */
     fun clearAllLocalData(onDataCleared: () -> Unit) {
         viewModelScope.launch {
             settingsRepository.clearAllLocalData()
+            chatHistoryRepository.clearAllHistory()
             _uiState.update { SettingsUiState() }
             onDataCleared()
         }

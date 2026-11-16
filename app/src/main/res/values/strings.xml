@@ -114,4 +114,18 @@
     <string name="error_missing_api_key">No API key configured. Please enter your Coarena API key.</string>
     <string name="error_invalid_url">Invalid Base URL. Use a valid http:// or https:// address.</string>
     <string name="error_unknown">An unexpected error occurred.</string>
+    <!-- Chat History -->
+    <string name="history_button_cd">Chat history</string>
+    <string name="history_sheet_title">Chat History</string>
+    <string name="history_search_placeholder">Search conversations…</string>
+    <string name="history_empty_title">No saved conversations yet</string>
+    <string name="history_empty_subtitle">Your sent messages and model replies will be saved automatically on this device.</string>
+    <string name="history_new_chat">New Chat</string>
+    <string name="history_clear_all">Clear All</string>
+    <string name="history_clear_all_title">Clear chat history?</string>
+    <string name="history_clear_all_body">All saved conversations and messages on this device will be permanently deleted.</string>
+    <string name="history_delete_session_cd">Delete conversation</string>
+    <string name="history_message_count_one">%1$d message</string>
+    <string name="history_message_count_other">%1$d messages</string>
+    <string name="history_active_badge">Active</string>
 </resources>
