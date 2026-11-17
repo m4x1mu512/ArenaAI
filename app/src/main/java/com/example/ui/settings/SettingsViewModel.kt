@@ -98,7 +98,7 @@ class SettingsViewModel @Inject constructor(
                 it.copy(
                     hasSavedApiKey = hasKey,
                     baseUrlInput = settings.baseUrl,
-                    defaultModelId = settings.defaultModelId,
+                    defaultModelId = coarenaRepository.getSelectedModelId(),
                     themeMode = settings.themeMode,
                     useStreaming = settings.useStreaming,
                     wireFormat = settings.wireFormat,
@@ -155,7 +155,7 @@ class SettingsViewModel @Inject constructor(
     fun selectDefaultModel(modelId: String) {
         _uiState.update { it.copy(defaultModelId = modelId) }
         viewModelScope.launch {
-            settingsRepository.saveDefaultModel(modelId)
+            coarenaRepository.saveSelectedModel(modelId)
         }
     }
 
