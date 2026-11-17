@@ -42,3 +42,37 @@ data class UsageDto(
     @SerialName("completion_tokens") val completionTokens: Int? = null,
     @SerialName("total_tokens") val totalTokens: Int? = null,
 )
+
+
+/** OpenAI-compatible multimodal message content for image-aware chat completions. */
+@Serializable
+data class MultimodalChatMessageDto(
+    val role: String,
+    val content: List<MultimodalContentPartDto>,
+)
+
+@Serializable
+data class MultimodalContentPartDto(
+    val type: String,
+    val text: String? = null,
+    @SerialName("image_url") val imageUrl: ImageUrlDto? = null,
+)
+
+@Serializable
+data class ImageUrlDto(
+    val url: String,
+)
+
+/** Responses API input content uses input_text/input_image part names. */
+@Serializable
+data class ResponsesInputMessageDto(
+    val role: String,
+    val content: List<ResponsesInputPartDto>,
+)
+
+@Serializable
+data class ResponsesInputPartDto(
+    val type: String,
+    val text: String? = null,
+    @SerialName("image_url") val imageUrl: String? = null,
+)
