@@ -1,13 +1,16 @@
 package com.example.ui.chat
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.domain.model.AiModel
 import com.example.domain.model.AppError
+import com.example.domain.model.ChatAttachment
 import com.example.domain.model.ChatMessage
 import com.example.domain.model.ChatSession
 import com.example.domain.model.ChatStreamEvent
 import com.example.domain.model.MessageRole
+import com.example.data.local.ImageAttachmentStore
 import com.example.domain.repository.ChatHistoryRepository
 import com.example.domain.repository.CoarenaRepository
 import com.example.domain.repository.SettingsRepository
@@ -30,6 +33,7 @@ data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val sessions: List<ChatSession> = emptyList(),
     val inputText: String = "",
+    val pendingAttachments: List<ChatAttachment> = emptyList(),
     val models: List<AiModel> = emptyList(),
     val selectedModelId: String? = null,
     val isLoadingModels: Boolean = false,
@@ -188,6 +192,38 @@ class ChatViewModel @Inject constructor(
         _uiState.update { it.copy(inputText = text) }
     }
 
+    /** Imports up to eight selected images into private storage for the pending message. */
+    fun addImages(uris: List<Uri>) {
+        viewModelScope.launch {
+            val current = _uiState.value.pendingAttachments
+            val remaining = (ImageAttachmentStore.MAX_IMAGES - current.size).coerceAtLeast(0)
+            if (remaining == 0) {
+                _uiState.update { it.copy(chatError = AppError.Unknown("You can attach up to 8 images")) }
+                return@launch
+            }
+            val imported = mutableListOf<ChatAttachment>()
+            try {
+                uris.take(remaining).forEach { uri ->
+                    imported += imageAttachmentStore.import(uri)
+                }
+                _uiState.update {
+                    it.copy(pendingAttachments = it.pendingAttachments + imported, chatError = null)
+                }
+            } catch (error: Throwable) {
+                imported.forEach(imageAttachmentStore::delete)
+                _uiState.update { it.copy(chatError = AppError.Unknown(error.message ?: "Unable to add image")) }
+            }
+        }
+    }
+
+    fun removePendingImage(attachmentId: String) {
+        val attachment = _uiState.value.pendingAttachments.firstOrNull { it.id == attachmentId } ?: return
+        imageAttachmentStore.delete(attachment)
+        _uiState.update { state ->
+            state.copy(pendingAttachments = state.pendingAttachments.filterNot { it.id == attachmentId })
+        }
+    }
+
     /** Selects an AI model for subsequent messages and remembers it as default. */
     fun selectModel(modelId: String) {
         hasUserExplicitlySelectedModel = true
@@ -306,7 +342,7 @@ class ChatViewModel @Inject constructor(
         if (state.isSending) return
 
         val prompt = (overrideText ?: state.inputText).trim()
-        if (prompt.isEmpty()) return
+        if (prompt.isEmpty() && state.pendingAttachments.isEmpty()) return
 
         val modelId = state.selectedModelId
         if (modelId.isNullOrBlank()) {
@@ -340,7 +376,7 @@ class ChatViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 messages = it.messages + userMessage + assistantPlaceholder,
-                inputText = if (overrideText == null) "" else it.inputText,
+                inputText = if (overrideText == null) "" else it.inputText,\n                pendingAttachments = emptyList(),
                 isSending = true,
                 chatError = null,
             )
