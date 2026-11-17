@@ -28,6 +28,7 @@ data class ProviderConnectionsUiState(
     val testModelCount: Int? = null,
     val error: String? = null,
     val isSaving: Boolean = false,
+    val editingConnectionId: String? = null,
 )
 
 @HiltViewModel
@@ -61,6 +62,28 @@ class ProviderConnectionsViewModel @Inject constructor(
         }
     }
 
+    fun editConnection(id: String) {
+        val connection = _state.value.connections.firstOrNull { it.id == id } ?: return
+        val presetId = if (connection.providerId == ProviderCatalog.customPreset.id ||
+            ProviderCatalog.find(connection.providerId) == null
+        ) ProviderCatalog.customPreset.id else connection.providerId
+        _state.update {
+            it.copy(
+                selectedPresetId = presetId,
+                displayName = connection.displayName,
+                baseUrl = connection.baseUrl,
+                apiKey = "",
+                editingConnectionId = id,
+                error = null,
+                testModelCount = null,
+            )
+        }
+    }
+
+    fun cancelEdit() {
+        _state.update { it.copy(editingConnectionId = null, apiKey = "", error = null) }
+    }
+
     fun setDisplayName(value: String) = _state.update { it.copy(displayName = value, error = null) }
     fun setBaseUrl(value: String) = _state.update { it.copy(baseUrl = value, error = null, testModelCount = null) }
     fun setApiKey(value: String) = _state.update { it.copy(apiKey = value, error = null, testModelCount = null) }
@@ -87,7 +110,9 @@ class ProviderConnectionsViewModel @Inject constructor(
 
     fun saveConnection() {
         val snapshot = _state.value
-        if (snapshot.displayName.isBlank() || snapshot.baseUrl.isBlank() || snapshot.apiKey.isBlank()) {
+        if (snapshot.displayName.isBlank() || snapshot.baseUrl.isBlank() ||
+            (snapshot.apiKey.isBlank() && snapshot.editingConnectionId == null)
+        ) {
             _state.update { it.copy(error = "Заполните название, Base URL и API Key.") }
             return
         }
@@ -96,24 +121,38 @@ class ProviderConnectionsViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true, error = null) }
             runCatching {
-                val id = UUID.randomUUID().toString().replace("-", "")
-                val providerId = preset?.id ?: ProviderCatalog.customPreset.id
-                repository.addConnection(
-                    connection = ProviderConnection(
-                        id = id,
-                        providerId = providerId,
-                        baseUrl = snapshot.baseUrl.trim(),
-                        credentialId = "provider_$id",
-                        displayName = snapshot.displayName.trim(),
-                    ),
-                    apiKey = snapshot.apiKey.trim(),
-                    makeActive = true,
-                )
+                val editing = snapshot.editingConnectionId?.let { id ->
+                    snapshot.connections.firstOrNull { it.id == id }
+                }
+                if (editing != null) {
+                    repository.updateConnection(
+                        connection = editing.copy(
+                            baseUrl = snapshot.baseUrl.trim(),
+                            displayName = snapshot.displayName.trim(),
+                        ),
+                        replacementApiKey = snapshot.apiKey.takeIf { it.isNotBlank() },
+                    )
+                } else {
+                    val id = UUID.randomUUID().toString().replace("-", "")
+                    val providerId = preset?.id ?: ProviderCatalog.customPreset.id
+                    repository.addConnection(
+                        connection = ProviderConnection(
+                            id = id,
+                            providerId = providerId,
+                            baseUrl = snapshot.baseUrl.trim(),
+                            credentialId = "provider_$id",
+                            displayName = snapshot.displayName.trim(),
+                        ),
+                        apiKey = snapshot.apiKey.trim(),
+                        makeActive = true,
+                    )
+                }
             }.onSuccess {
                 _state.update {
                     it.copy(
                         isSaving = false,
                         apiKey = "",
+                        editingConnectionId = null,
                         error = null,
                         testModelCount = null,
                     )
