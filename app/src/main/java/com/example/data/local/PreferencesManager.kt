@@ -11,7 +11,6 @@ import com.example.domain.model.ApiWireFormat
 import com.example.domain.model.AppSettings
 import com.example.domain.model.ThemeMode
 import com.example.domain.model.ProviderConnection
-import com.example.domain.model.ApiWireFormat
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonArray
