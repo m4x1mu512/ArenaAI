@@ -9,12 +9,19 @@ import com.example.domain.model.LimitsInfo
 import com.example.domain.model.RequestDiagnostic
 import com.example.domain.model.RequestHistoryItem
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Repository for communicating with Coarena OpenAI-compatible and account endpoints.
  */
 interface CoarenaRepository {
+    /** Current selected provider connection; null means the legacy Coarena setup is active. */
+    val activeProviderConnectionId: Flow<String?> get() = flowOf(null)
+
+    /** Persists a model selection for the active provider (or the legacy default). */
+    suspend fun saveSelectedModel(modelId: String) {}
+
     /** Emits non-secret diagnostic details of the most recent chat completion request. */
     val lastRequestDiagnostic: StateFlow<RequestDiagnostic?>
 
