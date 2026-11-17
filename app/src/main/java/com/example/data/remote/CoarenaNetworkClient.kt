@@ -30,7 +30,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Response
 import okhttp3.ResponseBody
 import java.io.File
-import android.util.Base64
+import java.util.Base64
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -162,7 +162,7 @@ class CoarenaNetworkClient @Inject constructor(
                     throw IOException("Attached images exceed the 6 MiB request limit")
                 }
                 val bytes = file.readBytes()
-                return "data:$mimeType;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
+                return "data:$mimeType;base64," + Base64.getEncoder().encodeToString(bytes)
             }
 
             return if (wireFormat == ApiWireFormat.RESPONSES) {
