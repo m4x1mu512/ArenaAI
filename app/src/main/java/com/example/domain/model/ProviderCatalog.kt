@@ -94,6 +94,13 @@ object ProviderCatalog {
             requiresCustomHeaders = true,
         ),
         ProviderPreset(
+            id = "huggingface",
+            displayName = "Hugging Face",
+            baseUrl = "https://router.huggingface.co/v1",
+            protocol = ProviderProtocol.OPENAI_COMPATIBLE,
+            description = "Inference Providers: чат-модели с автоматическим выбором провайдера",
+        ),
+        ProviderPreset(
             id = "xai",
             displayName = "xAI",
             baseUrl = "https://api.x.ai/v1",
