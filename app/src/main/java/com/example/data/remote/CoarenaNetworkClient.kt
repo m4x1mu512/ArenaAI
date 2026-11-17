@@ -51,7 +51,7 @@ class CoarenaNetworkClient @Inject constructor(
 
     private val _lastRequestDiagnostic = MutableStateFlow<RequestDiagnostic?>(null)
 
-    private companion object { const val MAX_MULTIMODAL_IMAGE_BYTES = 6L * 1024L * 1024L }
+    private companion object { const val MAX_MULTIMODAL_IMAGE_BYTES = 5L * 1024L * 1024L }
 
     /** Latest non-secret request diagnostic snapshot for troubleshooting. */
     val lastRequestDiagnostic: StateFlow<RequestDiagnostic?> = _lastRequestDiagnostic.asStateFlow()
@@ -159,7 +159,7 @@ class CoarenaNetworkClient @Inject constructor(
                 if (!file.isFile) throw IOException("An attached image is no longer available")
                 totalImageBytes += file.length()
                 if (totalImageBytes > MAX_MULTIMODAL_IMAGE_BYTES) {
-                    throw IOException("Attached images exceed the 6 MiB request limit")
+                    throw IOException("Attached images exceed the 5 MiB request limit")
                 }
                 val bytes = file.readBytes()
                 return "data:$mimeType;base64," + Base64.getEncoder().encodeToString(bytes)
