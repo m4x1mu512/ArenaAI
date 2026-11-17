@@ -26,8 +26,13 @@ class ImageAttachmentStore @Inject constructor(
         require(sourceMime.startsWith("image/")) { "Only image files can be attached" }
 
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            ?: throw IllegalArgumentException("Unable to read the selected image")
+        val boundsStream = resolver.openInputStream(uri)
+            ?: throw IllegalArgumentException("Unable to open the selected image")
+        boundsStream.use { stream ->
+            // decodeStream intentionally returns null when inJustDecodeBounds is true.
+            // The dimensions are written to Options, so do not treat that null as a read failure.
+            BitmapFactory.decodeStream(stream, null, bounds)
+        }
         require(bounds.outWidth > 0 && bounds.outHeight > 0) { "The selected image is invalid" }
 
         var sample = 1
