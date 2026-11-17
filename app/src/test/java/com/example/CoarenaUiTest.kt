@@ -246,6 +246,7 @@ class CoarenaUiTest {
                 SettingsScreen(
                     onBack = {},
                     onNavigateToSetup = { navigatedToSetup = true },
+                    showProviderConnections = false,
                     viewModel = viewModel,
                 )
             }
