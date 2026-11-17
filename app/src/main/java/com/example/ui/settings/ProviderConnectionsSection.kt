@@ -71,6 +71,9 @@ fun ProviderConnectionsSection(
                                 Text("Использовать")
                             }
                         }
+                        TextButton(onClick = { viewModel.editConnection(connection.id) }) {
+                            Text("Изменить")
+                        }
                         TextButton(onClick = { viewModel.delete(connection.id) }) {
                             Text("Удалить", color = MaterialTheme.colorScheme.error)
                         }
@@ -87,7 +90,10 @@ fun ProviderConnectionsSection(
                 modifier = Modifier.padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text("Добавить подключение", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    if (state.editingConnectionId == null) "Добавить подключение" else "Изменить подключение",
+                    style = MaterialTheme.typography.titleSmall,
+                )
                 OutlinedButton(
                     onClick = { presetMenuExpanded = true },
                     modifier = Modifier.fillMaxWidth(),
@@ -162,7 +168,12 @@ fun ProviderConnectionsSection(
                         enabled = !state.isSaving && !state.isTesting,
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text(if (state.isSaving) "Сохранение…" else "Сохранить")
+                        Text(if (state.isSaving) "Сохранение…" else if (state.editingConnectionId == null) "Сохранить" else "Сохранить изменения")
+                    }
+                    if (state.editingConnectionId != null) {
+                        TextButton(onClick = viewModel::cancelEdit) {
+                            Text("Отмена")
+                        }
                     }
                 }
             }
