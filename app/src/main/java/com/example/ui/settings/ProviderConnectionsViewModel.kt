@@ -3,9 +3,9 @@ package com.example.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.remote.CoarenaNetworkClient
+import com.example.data.remote.AnthropicNetworkClient
 import com.example.domain.model.ProviderCatalog
 import com.example.domain.model.ProviderConnection
-import com.example.domain.model.ProviderProtocol
 import com.example.domain.repository.ProviderConnectionsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +34,7 @@ data class ProviderConnectionsUiState(
 class ProviderConnectionsViewModel @Inject constructor(
     private val repository: ProviderConnectionsRepository,
     private val networkClient: CoarenaNetworkClient,
+    private val anthropicNetworkClient: AnthropicNetworkClient,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ProviderConnectionsUiState())
     val state: StateFlow<ProviderConnectionsUiState> = _state.asStateFlow()
@@ -66,17 +67,17 @@ class ProviderConnectionsViewModel @Inject constructor(
 
     fun testConnection() {
         val snapshot = _state.value
-        if (snapshot.selectedPresetId == "anthropic") {
-            _state.update { it.copy(error = "Anthropic Messages API пока не подключён к чату.") }
-            return
-        }
         if (snapshot.apiKey.isBlank() || snapshot.baseUrl.isBlank()) {
             _state.update { it.copy(error = "Укажите Base URL и API Key.") }
             return
         }
         viewModelScope.launch {
             _state.update { it.copy(isTesting = true, error = null, testModelCount = null) }
-            val result = networkClient.fetchModels(snapshot.baseUrl.trim(), snapshot.apiKey.trim())
+            val result = if (snapshot.selectedPresetId == "anthropic") {
+                anthropicNetworkClient.fetchModels(snapshot.baseUrl.trim(), snapshot.apiKey.trim())
+            } else {
+                networkClient.fetchModels(snapshot.baseUrl.trim(), snapshot.apiKey.trim())
+            }
             _state.update {
                 if (result.isSuccess) it.copy(isTesting = false, testModelCount = result.getOrThrow().size)
                 else it.copy(isTesting = false, error = result.exceptionOrNull()?.message ?: "Не удалось подключиться.")
@@ -92,10 +93,6 @@ class ProviderConnectionsViewModel @Inject constructor(
         }
         val preset = ProviderCatalog.find(snapshot.selectedPresetId)
             ?: if (snapshot.selectedPresetId == ProviderCatalog.customPreset.id) ProviderCatalog.customPreset else null
-        if (preset?.protocol == ProviderProtocol.ANTHROPIC_MESSAGES) {
-            _state.update { it.copy(error = "Anthropic пока нельзя выбрать для чата: адаптер Messages API ещё не подключён.") }
-            return
-        }
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true, error = null) }
             runCatching {
