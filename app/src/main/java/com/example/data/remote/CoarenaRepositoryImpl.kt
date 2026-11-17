@@ -34,6 +34,11 @@ class CoarenaRepositoryImpl @Inject constructor(
 
     override val activeProviderConnectionId = providerConnectionsRepository.activeConnectionId
 
+    override suspend fun getSelectedModelId(): String? {
+        val active = providerConnectionsRepository.getActiveConnection()
+        return active?.defaultModelId ?: if (active == null) settingsRepository.settingsFlow.first().defaultModelId else null
+    }
+
     override suspend fun saveSelectedModel(modelId: String) {
         val active = providerConnectionsRepository.getActiveConnection()
         if (active != null) {
@@ -148,6 +153,9 @@ class CoarenaRepositoryImpl @Inject constructor(
     }
 
     private suspend fun requireCredentialsAndSettings(): Result<Pair<AppSettings, String>> {
+        if (providerConnectionsRepository.getActiveConnection() != null) {
+            return Result.failure(IllegalStateException("Данные аккаунта доступны только для legacy Coarena-подключения."))
+        }
         val apiKey = settingsRepository.getApiKey()?.trim()
         if (apiKey.isNullOrEmpty()) {
             return Result.failure(CoarenaApiException(AppError.MissingApiKey()))
