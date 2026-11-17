@@ -117,7 +117,12 @@ class SettingsViewModel @Inject constructor(
             val hasKey = !settingsRepository.getApiKey().isNullOrBlank()
             val activeConnection = providerConnectionsRepository.getActiveConnection()
             val hasActiveKey = activeConnection?.let { !providerConnectionsRepository.getApiKey(it).isNullOrBlank() } == true
-            val selectedModelId = coarenaRepository.getSelectedModelId()
+            val activeProviderId = providerConnectionsRepository.activeConnectionId.first()
+            val selectedModelId = if (activeProviderId == null) {
+                settings.defaultModelId
+            } else {
+                coarenaRepository.getSelectedModelId()
+            }
             _uiState.update {
                 it.copy(
                     hasSavedApiKey = hasKey,
