@@ -41,7 +41,7 @@ object ProviderCatalog {
             displayName = "Anthropic",
             baseUrl = "https://api.anthropic.com/v1",
             protocol = ProviderProtocol.ANTHROPIC_MESSAGES,
-            description = "Claude API; требуется отдельный адаптер Messages",
+            description = "Claude API через нативный Messages API",
         ),
         ProviderPreset(
             id = "google-gemini",
