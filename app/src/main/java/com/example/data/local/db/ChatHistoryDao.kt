@@ -9,7 +9,7 @@ import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Room DAO for local chat sessions and messages.
+ * Room DAO for local chat sessions, messages, and image attachment metadata.
  */
 @Dao
 interface ChatHistoryDao {
@@ -72,6 +72,14 @@ interface ChatHistoryDao {
     @Query("SELECT * FROM chat_messages WHERE session_id = :sessionId ORDER BY timestamp_millis ASC")
     suspend fun getMessagesForSession(sessionId: String): List<ChatMessageEntity>
 
+    @Transaction
+    @Query("SELECT * FROM chat_messages WHERE session_id = :sessionId ORDER BY timestamp_millis ASC")
+    fun observeMessagesWithAttachments(sessionId: String): Flow<List<ChatMessageWithAttachments>>
+
+    @Transaction
+    @Query("SELECT * FROM chat_messages WHERE session_id = :sessionId ORDER BY timestamp_millis ASC")
+    suspend fun getMessagesWithAttachments(sessionId: String): List<ChatMessageWithAttachments>
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertSession(session: ChatSessionEntity)
 
@@ -81,6 +89,12 @@ interface ChatHistoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertMessage(message: ChatMessageEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAttachments(attachments: List<ChatAttachmentEntity>)
+
+    @Query("DELETE FROM chat_attachments WHERE message_id = :messageId")
+    suspend fun deleteAttachmentsForMessage(messageId: String)
+
     @Transaction
     suspend fun saveSessionAndMessage(
         sessionId: String,
@@ -88,6 +102,7 @@ interface ChatHistoryDao {
         modelId: String?,
         updatedAtMillis: Long,
         message: ChatMessageEntity,
+        attachments: List<ChatAttachmentEntity>,
     ) {
         val existing = getSessionById(sessionId)
         if (existing == null) {
@@ -109,6 +124,10 @@ interface ChatHistoryDao {
             )
         }
         upsertMessage(message)
+        deleteAttachmentsForMessage(message.id)
+        if (attachments.isNotEmpty()) {
+            upsertAttachments(attachments)
+        }
     }
 
     @Query("DELETE FROM chat_messages WHERE id = :messageId")
