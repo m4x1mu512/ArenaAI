@@ -88,6 +88,7 @@ import com.example.ui.components.ErrorBannerCard
 fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToSetup: () -> Unit,
+    onProviderSaved: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -109,6 +110,7 @@ fun SettingsScreen(
         onDeleteKeyConfirmed = { viewModel.deleteSavedKey(onNavigateToSetup) },
         onClearAllConfirmed = { viewModel.clearAllLocalData(onNavigateToSetup) },
         onConsumeSavedConfirmation = viewModel::consumeSavedConfirmation,
+        onProviderSaved = onProviderSaved,
     )
 }
 
@@ -135,6 +137,7 @@ fun SettingsScreenContent(
     onDeleteKeyConfirmed: () -> Unit,
     onClearAllConfirmed: () -> Unit,
     onConsumeSavedConfirmation: () -> Unit,
+    onProviderSaved: () -> Unit = {},
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val savedMsg = stringResource(R.string.settings_saved_snackbar)
@@ -198,7 +201,7 @@ fun SettingsScreenContent(
             ) {
                 // Section 1: Credentials & Connection
                 SettingsSectionHeader(stringResource(R.string.settings_section_connection))
-                ProviderConnectionsSection()
+                ProviderConnectionsSection(onConnectionSaved = onProviderSaved)
 
                 Card(
                     colors = CardDefaults.cardColors(
