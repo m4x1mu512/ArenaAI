@@ -360,6 +360,7 @@ class ChatViewModel @Inject constructor(
             role = MessageRole.USER,
             content = prompt,
             timestampMillis = now,
+            attachments = state.pendingAttachments,
         )
         val assistantPlaceholderId = UUID.randomUUID().toString()
         val assistantPlaceholder = ChatMessage(
