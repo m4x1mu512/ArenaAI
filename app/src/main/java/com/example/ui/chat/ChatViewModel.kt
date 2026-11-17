@@ -12,6 +12,7 @@ import com.example.domain.model.ChatStreamEvent
 import com.example.domain.model.MessageRole
 import com.example.data.local.ImageAttachmentStore
 import com.example.data.remote.CoarenaNetworkClient
+import com.example.data.remote.AnthropicNetworkClient
 import com.example.domain.repository.ProviderConnectionsRepository
 import com.example.domain.repository.ChatHistoryRepository
 import com.example.domain.repository.CoarenaRepository
@@ -60,6 +61,7 @@ class ChatViewModel @Inject constructor(
     private val imageAttachmentStore: ImageAttachmentStore,
     private val providerConnectionsRepository: ProviderConnectionsRepository,
     private val networkClient: CoarenaNetworkClient,
+    private val anthropicNetworkClient: AnthropicNetworkClient,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -182,6 +184,8 @@ class ChatViewModel @Inject constructor(
                 val key = providerConnectionsRepository.getApiKey(activeConnection)
                 if (key.isNullOrBlank()) {
                     Result.failure(IllegalStateException("Для активного подключения не найден API Key."))
+                } else if (activeConnection.providerId == "anthropic") {
+                    anthropicNetworkClient.fetchModels(activeConnection.baseUrl, key)
                 } else {
                     networkClient.fetchModels(activeConnection.baseUrl, key)
                 }
@@ -502,15 +506,26 @@ class ChatViewModel @Inject constructor(
                         ?.takeIf { it.isNotBlank() }
                         ?: throw IllegalStateException("Для активного подключения не найден API Key.")
                     val appSettings = settingsRepository.settingsFlow.first()
-                    networkClient.streamChatCompletion(
-                        baseUrl = activeConnection.baseUrl,
-                        apiKey = apiKey,
-                        modelId = modelId,
-                        history = requestHistory,
-                        systemPrompt = systemPrompt,
-                        useStreaming = appSettings.useStreaming,
-                        wireFormat = activeConnection.wireFormat,
-                    )
+                    if (activeConnection.providerId == "anthropic") {
+                        anthropicNetworkClient.streamChat(
+                            baseUrl = activeConnection.baseUrl,
+                            apiKey = apiKey,
+                            modelId = modelId,
+                            history = requestHistory,
+                            systemPrompt = systemPrompt,
+                            useStreaming = appSettings.useStreaming,
+                        )
+                    } else {
+                        networkClient.streamChatCompletion(
+                            baseUrl = activeConnection.baseUrl,
+                            apiKey = apiKey,
+                            modelId = modelId,
+                            history = requestHistory,
+                            systemPrompt = systemPrompt,
+                            useStreaming = appSettings.useStreaming,
+                            wireFormat = activeConnection.wireFormat,
+                        )
+                    }
                 } else {
                     coarenaRepository.sendChatMessage(
                         modelId = modelId,
