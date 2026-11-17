@@ -163,4 +163,13 @@ class CoarenaApiParserTest {
         val redacted = SecretRedactor.redact("Failed with key $secretKey", secretKey)
         assertFalse(redacted.contains(secretKey))
     }
+
+    @Test
+    fun `parses Cloudflare Workers AI model search response`() {
+        val models = parser.parseModels(
+            """{"success":true,"result":[{"id":"model-uuid","name":"@cf/meta/llama-test","description":"Test model"}]}""",
+        )
+        assertEquals(1, models.size)
+        assertEquals("@cf/meta/llama-test", models.first().id)
+    }
 }
