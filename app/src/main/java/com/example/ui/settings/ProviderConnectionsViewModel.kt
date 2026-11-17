@@ -90,16 +90,26 @@ class ProviderConnectionsViewModel @Inject constructor(
 
     fun testConnection() {
         val snapshot = _state.value
-        if (snapshot.apiKey.isBlank() || snapshot.baseUrl.isBlank()) {
-            _state.update { it.copy(error = "Укажите Base URL и API Key.") }
+        if (snapshot.baseUrl.isBlank()) {
+            _state.update { it.copy(error = "Укажите Base URL.") }
             return
         }
         viewModelScope.launch {
+            val existing = snapshot.editingConnectionId?.let { id ->
+                snapshot.connections.firstOrNull { it.id == id }
+            }
+            val effectiveKey = snapshot.apiKey.trim().ifBlank {
+                existing?.let { repository.getApiKey(it) }.orEmpty()
+            }
+            if (effectiveKey.isBlank()) {
+                _state.update { it.copy(error = "Укажите API Key.") }
+                return@launch
+            }
             _state.update { it.copy(isTesting = true, error = null, testModelCount = null) }
             val result = if (snapshot.selectedPresetId == "anthropic") {
-                anthropicNetworkClient.fetchModels(snapshot.baseUrl.trim(), snapshot.apiKey.trim())
+                anthropicNetworkClient.fetchModels(snapshot.baseUrl.trim(), effectiveKey)
             } else {
-                networkClient.fetchModels(snapshot.baseUrl.trim(), snapshot.apiKey.trim())
+                networkClient.fetchModels(snapshot.baseUrl.trim(), effectiveKey)
             }
             _state.update {
                 if (result.isSuccess) it.copy(isTesting = false, testModelCount = result.getOrThrow().size)
