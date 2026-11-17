@@ -145,6 +145,7 @@ class PreferencesManager(
                     put("displayName", connection.displayName)
                     connection.defaultModelId?.let { put("defaultModelId", it) }
                     connection.gatewayId?.let { put("gatewayId", it) }
+                    connection.manualModelIds?.let { put("manualModelIds", it) }
                 })
             }
         }.toString()
@@ -169,6 +170,7 @@ class PreferencesManager(
                 displayName = item["displayName"]?.jsonPrimitive?.contentOrNull ?: providerId,
                 defaultModelId = item["defaultModelId"]?.jsonPrimitive?.contentOrNull,
                 gatewayId = item["gatewayId"]?.jsonPrimitive?.contentOrNull,
+                manualModelIds = item["manualModelIds"]?.jsonPrimitive?.contentOrNull,
             )
         }
     }.getOrDefault(emptyList())
