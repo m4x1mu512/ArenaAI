@@ -360,6 +360,7 @@ class CoarenaUiTest {
     private class FakeProviderConnectionsRepository : ProviderConnectionsRepository {
         override val connections: Flow<List<ProviderConnection>> = MutableStateFlow(emptyList())
         override val activeConnectionId: Flow<String?> = MutableStateFlow(null)
+        override val isInitialized: Flow<Boolean> = MutableStateFlow(true)
 
         override suspend fun addConnection(connection: ProviderConnection, apiKey: String, makeActive: Boolean) = Unit
         override suspend fun updateConnection(connection: ProviderConnection, replacementApiKey: String?) = Unit
