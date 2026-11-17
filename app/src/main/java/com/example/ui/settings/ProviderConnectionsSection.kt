@@ -47,6 +47,28 @@ fun ProviderConnectionsSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Coarena — прежние настройки", style = MaterialTheme.typography.titleSmall)
+                    Text("Использовать сохранённый Base URL и API Key", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (state.activeConnectionId == null) {
+                    Text("Активно", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                } else {
+                    TextButton(onClick = viewModel::setLegacyCoarenaActive) {
+                        Text("Использовать")
+                    }
+                }
+            }
+        }
+
         state.connections.forEach { connection ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
