@@ -12,6 +12,7 @@ import com.example.domain.model.RequestDiagnostic
 import com.example.domain.model.RequestHistoryItem
 import com.example.domain.repository.CoarenaRepository
 import com.example.domain.repository.SettingsRepository
+import com.example.domain.repository.ProviderConnectionsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emitAll
@@ -27,12 +28,35 @@ import javax.inject.Singleton
 class CoarenaRepositoryImpl @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val networkClient: CoarenaNetworkClient,
+    private val providerConnectionsRepository: ProviderConnectionsRepository,
+    private val anthropicNetworkClient: AnthropicNetworkClient,
 ) : CoarenaRepository {
+
+    override val activeProviderConnectionId = providerConnectionsRepository.activeConnectionId
+
+    override suspend fun saveSelectedModel(modelId: String) {
+        val active = providerConnectionsRepository.getActiveConnection()
+        if (active != null) {
+            providerConnectionsRepository.updateConnection(active.copy(defaultModelId = modelId))
+        } else {
+            settingsRepository.saveDefaultModel(modelId)
+        }
+    }
 
     override val lastRequestDiagnostic: StateFlow<RequestDiagnostic?> =
         networkClient.lastRequestDiagnostic
 
     override suspend fun fetchModels(): Result<List<AiModel>> {
+        val active = providerConnectionsRepository.getActiveConnection()
+        if (active != null) {
+            val key = providerConnectionsRepository.getApiKey(active)?.takeIf { it.isNotBlank() }
+                ?: return Result.failure(CoarenaApiException(AppError.MissingApiKey()))
+            return if (active.providerId == "anthropic") {
+                anthropicNetworkClient.fetchModels(active.baseUrl, key)
+            } else {
+                networkClient.fetchModels(active.baseUrl, key)
+            }
+        }
         val (settings, apiKey) = requireCredentialsAndSettings().getOrElse { return Result.failure(it) }
         return networkClient.fetchModels(settings.baseUrl, apiKey)
     }
@@ -66,18 +90,46 @@ class CoarenaRepositoryImpl @Inject constructor(
         history: List<ChatMessage>,
         systemPrompt: String,
     ): Flow<ChatStreamEvent> = flow {
-        val (settings, apiKey) = requireCredentialsAndSettings().getOrThrow()
-        emitAll(
-            networkClient.streamChatCompletion(
-                baseUrl = settings.baseUrl,
-                apiKey = apiKey,
-                modelId = modelId,
-                history = history,
-                systemPrompt = systemPrompt,
-                useStreaming = settings.useStreaming,
-                wireFormat = settings.wireFormat,
-            ),
-        )
+        val active = providerConnectionsRepository.getActiveConnection()
+        if (active != null) {
+            val key = providerConnectionsRepository.getApiKey(active)?.takeIf { it.isNotBlank() }
+                ?: throw CoarenaApiException(AppError.MissingApiKey())
+            val settings = settingsRepository.settingsFlow.first()
+            val events = if (active.providerId == "anthropic") {
+                anthropicNetworkClient.streamChat(
+                    baseUrl = active.baseUrl,
+                    apiKey = key,
+                    modelId = modelId,
+                    history = history,
+                    systemPrompt = systemPrompt,
+                    useStreaming = settings.useStreaming,
+                )
+            } else {
+                networkClient.streamChatCompletion(
+                    baseUrl = active.baseUrl,
+                    apiKey = key,
+                    modelId = modelId,
+                    history = history,
+                    systemPrompt = systemPrompt,
+                    useStreaming = settings.useStreaming,
+                    wireFormat = active.wireFormat,
+                )
+            }
+            emitAll(events)
+        } else {
+            val (settings, apiKey) = requireCredentialsAndSettings().getOrThrow()
+            emitAll(
+                networkClient.streamChatCompletion(
+                    baseUrl = settings.baseUrl,
+                    apiKey = apiKey,
+                    modelId = modelId,
+                    history = history,
+                    systemPrompt = systemPrompt,
+                    useStreaming = settings.useStreaming,
+                    wireFormat = settings.wireFormat,
+                ),
+            )
+        }
     }
 
     override suspend fun fetchCredits(): Result<CreditsInfo> {
