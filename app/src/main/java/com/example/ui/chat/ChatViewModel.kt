@@ -20,6 +20,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -81,9 +82,11 @@ class ChatViewModel @Inject constructor(
             coarenaRepository.activeProviderConnectionId.collect { id ->
                 if (hasInitialValue && id != previousId) {
                     _uiState.update { it.copy(models = emptyList(), selectedModelId = null, modelsError = null) }
-                    loadModels()
+                    val preferred = coarenaRepository.getSelectedModelId()
+                    loadModels(preferredModelId = preferred)
                 } else if (!hasInitialValue && id != null) {
-                    loadModels()
+                    val preferred = coarenaRepository.getSelectedModelId()
+                    loadModels(preferredModelId = preferred)
                 }
                 hasInitialValue = true
                 previousId = id
@@ -171,10 +174,11 @@ class ChatViewModel @Inject constructor(
         loadModelsJob?.cancel()
         loadModelsJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoadingModels = true, modelsError = null) }
+            val hasActiveProvider = coarenaRepository.activeProviderConnectionId.first() != null
             coarenaRepository.fetchModels().fold(
                 onSuccess = { models ->
                     _uiState.update { state ->
-                        val candidate = state.selectedModelId ?: preferredModelId ?: latestDefaultModelId
+                        val candidate = state.selectedModelId ?: preferredModelId ?: if (hasActiveProvider) null else latestDefaultModelId
                         val resolvedSelection = when {
                             candidate != null && models.any { it.id == candidate } -> {
                                 modelAutoDefaultedFromFirst = false
