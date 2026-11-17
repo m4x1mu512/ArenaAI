@@ -75,6 +75,7 @@ import com.example.ui.components.ErrorBannerCard
 @Composable
 fun SetupScreen(
     onSetupComplete: () -> Unit,
+    onNavigateToSettings: () -> Unit = {},
     viewModel: SetupViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -87,6 +88,7 @@ fun SetupScreen(
         onResetBaseUrl = viewModel::resetBaseUrl,
         onTestConnection = viewModel::testConnection,
         onSaveAndContinue = { viewModel.saveAndContinue(onSetupComplete) },
+        onNavigateToSettings = onNavigateToSettings,
     )
 }
 
@@ -102,6 +104,7 @@ fun SetupScreenContent(
     onResetBaseUrl: () -> Unit,
     onTestConnection: () -> Unit,
     onSaveAndContinue: () -> Unit,
+    onNavigateToSettings: () -> Unit = {},
 ) {
     val focusManager = LocalFocusManager.current
     val uriHandler = LocalUriHandler.current
@@ -453,6 +456,13 @@ fun SetupScreenContent(
                             Text(stringResource(R.string.setup_save_continue))
                         }
                     }
+                }
+
+                TextButton(
+                    onClick = onNavigateToSettings,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Или подключить другого провайдера")
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
