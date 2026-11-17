@@ -26,7 +26,7 @@ data class ProviderConnectionsUiState(
     val baseUrl: String = ProviderCatalog.presets.first().baseUrl,
     val accountId: String = "",
     val gatewayId: String = "default",
-    val defaultModelId: String = "",
+    val manualModelIds: String = "",
     val apiKey: String = "",
     val isTesting: Boolean = false,
     val testModelCount: Int? = null,
@@ -67,7 +67,7 @@ class ProviderConnectionsViewModel @Inject constructor(
                 baseUrl = preset.baseUrl,
                 accountId = "",
                 gatewayId = "default",
-                defaultModelId = "",
+                manualModelIds = "",
                 error = null,
                 testModelCount = null,
             )
@@ -86,7 +86,7 @@ class ProviderConnectionsViewModel @Inject constructor(
                 baseUrl = connection.baseUrl,
                 accountId = Regex("/accounts/([^/]+)/ai/v1").find(connection.baseUrl)?.groupValues?.getOrNull(1).orEmpty(),
                 gatewayId = connection.gatewayId ?: "default",
-                defaultModelId = connection.defaultModelId.orEmpty(),
+                manualModelIds = connection.manualModelIds.orEmpty(),
                 apiKey = "",
                 editingConnectionId = id,
                 error = null,
@@ -103,7 +103,7 @@ class ProviderConnectionsViewModel @Inject constructor(
     fun setBaseUrl(value: String) = _state.update { it.copy(baseUrl = value, error = null, testModelCount = null) }
     fun setAccountId(value: String) = _state.update { it.copy(accountId = value.trim(), error = null, testModelCount = null) }
     fun setGatewayId(value: String) = _state.update { it.copy(gatewayId = value.trim(), error = null) }
-    fun setDefaultModelId(value: String) = _state.update { it.copy(defaultModelId = value.trim(), error = null) }
+    fun setManualModelIds(value: String) = _state.update { it.copy(manualModelIds = value, error = null) }
     fun setApiKey(value: String) = _state.update { it.copy(apiKey = value, error = null, testModelCount = null) }
 
     fun testConnection() {
@@ -166,7 +166,7 @@ class ProviderConnectionsViewModel @Inject constructor(
                             baseUrl = resolvedBaseUrl,
                             displayName = snapshot.displayName.trim(),
                             gatewayId = snapshot.gatewayId.takeIf { snapshot.selectedPresetId == "cloudflare" },
-                            defaultModelId = snapshot.defaultModelId.takeIf { it.isNotBlank() },
+                            manualModelIds = snapshot.manualModelIds.trim().takeIf { it.isNotBlank() },
                         ),
                         replacementApiKey = snapshot.apiKey.takeIf { it.isNotBlank() },
                     )
