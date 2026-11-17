@@ -176,7 +176,7 @@ class RoomChatHistoryRepositoryTest {
         repository.deleteMessage("m-image")
 
         assertTrue(repository.getMessages("s-image").isEmpty())
-        assertTrue(database.chatHistoryDao().getMessagesWithAttachments("s-image").isEmpty())
+        assertTrue(database.chatHistoryDao().getAttachmentsForMessage("m-image").isEmpty())
     }
 
 }
