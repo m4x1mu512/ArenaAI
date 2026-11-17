@@ -11,6 +11,8 @@ import com.example.domain.model.ChatSession
 import com.example.domain.model.ChatStreamEvent
 import com.example.domain.model.MessageRole
 import com.example.data.local.ImageAttachmentStore
+import com.example.data.remote.CoarenaNetworkClient
+import com.example.domain.repository.ProviderConnectionsRepository
 import com.example.domain.repository.ChatHistoryRepository
 import com.example.domain.repository.CoarenaRepository
 import com.example.domain.repository.SettingsRepository
@@ -20,6 +22,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -55,6 +58,8 @@ class ChatViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val chatHistoryRepository: ChatHistoryRepository,
     private val imageAttachmentStore: ImageAttachmentStore,
+    private val providerConnectionsRepository: ProviderConnectionsRepository,
+    private val networkClient: CoarenaNetworkClient,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -71,6 +76,25 @@ class ChatViewModel @Inject constructor(
         observeHistorySessions()
         restoreLatestSessionIfEmpty()
         observeSettingsAndLoadModels()
+        observeActiveProvider()
+    }
+
+    private fun observeActiveProvider() {
+        viewModelScope.launch {
+            var previousId: String? = null
+            providerConnectionsRepository.activeConnectionId.collect { id ->
+                if (id != previousId) {
+                    previousId = id
+                    if (id != null) {
+                        val connection = providerConnectionsRepository.getActiveConnection()
+                        _uiState.update {
+                            it.copy(models = emptyList(), selectedModelId = connection?.defaultModelId, modelsError = null)
+                        }
+                        loadModels(preferredModelId = connection?.defaultModelId)
+                    }
+                }
+            }
+        }
     }
 
     private fun observeHistorySessions() {
@@ -153,7 +177,18 @@ class ChatViewModel @Inject constructor(
         loadModelsJob?.cancel()
         loadModelsJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoadingModels = true, modelsError = null) }
-            coarenaRepository.fetchModels().fold(
+            val activeConnection = providerConnectionsRepository.getActiveConnection()
+            val modelsResult = if (activeConnection != null) {
+                val key = providerConnectionsRepository.getApiKey(activeConnection)
+                if (key.isNullOrBlank()) {
+                    Result.failure(IllegalStateException("Для активного подключения не найден API Key."))
+                } else {
+                    networkClient.fetchModels(activeConnection.baseUrl, key)
+                }
+            } else {
+                coarenaRepository.fetchModels()
+            }
+            modelsResult.fold(
                 onSuccess = { models ->
                     _uiState.update { state ->
                         val candidate = state.selectedModelId ?: preferredModelId ?: latestDefaultModelId
@@ -232,7 +267,12 @@ class ChatViewModel @Inject constructor(
         modelAutoDefaultedFromFirst = false
         _uiState.update { it.copy(selectedModelId = modelId, chatError = null) }
         viewModelScope.launch {
-            settingsRepository.saveDefaultModel(modelId)
+            val activeConnection = providerConnectionsRepository.getActiveConnection()
+            if (activeConnection != null) {
+                providerConnectionsRepository.updateConnection(activeConnection.copy(defaultModelId = modelId))
+            } else {
+                settingsRepository.saveDefaultModel(modelId)
+            }
         }
     }
 
@@ -456,11 +496,29 @@ class ChatViewModel @Inject constructor(
         streamJob = viewModelScope.launch {
             var latestResponseModelId: String? = null
             try {
-                coarenaRepository.sendChatMessage(
-                    modelId = modelId,
-                    history = requestHistory,
-                    systemPrompt = systemPrompt,
-                ).collect { event ->
+                val activeConnection = providerConnectionsRepository.getActiveConnection()
+                val stream = if (activeConnection != null) {
+                    val apiKey = providerConnectionsRepository.getApiKey(activeConnection)
+                        ?.takeIf { it.isNotBlank() }
+                        ?: throw IllegalStateException("Для активного подключения не найден API Key.")
+                    val appSettings = settingsRepository.settingsFlow.first()
+                    networkClient.streamChatCompletion(
+                        baseUrl = activeConnection.baseUrl,
+                        apiKey = apiKey,
+                        modelId = modelId,
+                        history = requestHistory,
+                        systemPrompt = systemPrompt,
+                        useStreaming = appSettings.useStreaming,
+                        wireFormat = activeConnection.wireFormat,
+                    )
+                } else {
+                    coarenaRepository.sendChatMessage(
+                        modelId = modelId,
+                        history = requestHistory,
+                        systemPrompt = systemPrompt,
+                    )
+                }
+                stream.collect { event ->
                     when (event) {
                         is ChatStreamEvent.Delta -> {
                             val responseModel = event.responseModelId?.takeIf { it.isNotBlank() }
