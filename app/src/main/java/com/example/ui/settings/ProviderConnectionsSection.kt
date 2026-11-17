@@ -32,6 +32,7 @@ import com.example.domain.model.ProviderCatalog
 
 @Composable
 fun ProviderConnectionsSection(
+    onConnectionSaved: () -> Unit = {},
     viewModel: ProviderConnectionsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -187,7 +188,7 @@ fun ProviderConnectionsSection(
                         Text(if (state.isTesting) "Проверка…" else "Проверить")
                     }
                     Button(
-                        onClick = viewModel::saveConnection,
+                        onClick = { viewModel.saveConnection(onConnectionSaved) },
                         enabled = !state.isSaving && !state.isTesting,
                         modifier = Modifier.weight(1f),
                     ) {
