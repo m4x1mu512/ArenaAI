@@ -120,4 +120,63 @@ class RoomChatHistoryRepositoryTest {
         assertTrue(repository.observeSessions().first().isEmpty())
         assertNull(repository.getLatestSession())
     }
+
+    @Test
+    fun `persists image attachment metadata with its message`() = runTest {
+        val attachment = ChatAttachment(
+            id = "att-1",
+            localPath = "/data/user/0/com.example/files/chat-images/att-1.jpg",
+            mimeType = "image/jpeg",
+            fileName = "photo.jpg",
+            sizeBytes = 245_760L,
+            width = 1280,
+            height = 720,
+            kind = ChatAttachmentKind.USER_IMAGE,
+            createdAtMillis = 900L,
+        )
+        val message = ChatMessage(
+            id = "m-image",
+            role = MessageRole.USER,
+            content = "What is in this picture?",
+            timestampMillis = 1_000L,
+            attachments = listOf(attachment),
+        )
+
+        repository.saveMessage("s-image", "Image question", "vision-model", message)
+
+        val restored = repository.getMessages("s-image").single()
+        assertEquals("What is in this picture?", restored.content)
+        assertEquals(listOf(attachment), restored.attachments)
+        assertEquals(listOf(attachment), repository.observeMessages("s-image").first().single().attachments)
+    }
+
+    @Test
+    fun `deleting a message also deletes its attachment metadata`() = runTest {
+        repository.saveMessage(
+            sessionId = "s-image",
+            sessionTitle = "Image question",
+            modelId = "vision-model",
+            message = ChatMessage(
+                id = "m-image",
+                role = MessageRole.USER,
+                content = "",
+                timestampMillis = 1_000L,
+                attachments = listOf(
+                    ChatAttachment(
+                        id = "att-1",
+                        localPath = "/private/chat-images/att-1.jpg",
+                        mimeType = "image/jpeg",
+                        sizeBytes = 1_024L,
+                        kind = ChatAttachmentKind.USER_IMAGE,
+                    ),
+                ),
+            ),
+        )
+
+        repository.deleteMessage("m-image")
+
+        assertTrue(repository.getMessages("s-image").isEmpty())
+        assertTrue(database.chatHistoryDao().getMessagesWithAttachments("s-image").isEmpty())
+    }
+
 }
