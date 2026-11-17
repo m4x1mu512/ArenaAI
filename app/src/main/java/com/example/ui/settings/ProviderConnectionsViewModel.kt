@@ -7,6 +7,7 @@ import com.example.data.remote.AnthropicNetworkClient
 import com.example.domain.model.ProviderCatalog
 import com.example.domain.model.ProviderConnection
 import com.example.domain.repository.ProviderConnectionsRepository
+import com.example.domain.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +30,7 @@ data class ProviderConnectionsUiState(
     val error: String? = null,
     val isSaving: Boolean = false,
     val editingConnectionId: String? = null,
+    val hasLegacyCoarenaKey: Boolean = false,
 )
 
 @HiltViewModel
@@ -36,11 +38,15 @@ class ProviderConnectionsViewModel @Inject constructor(
     private val repository: ProviderConnectionsRepository,
     private val networkClient: CoarenaNetworkClient,
     private val anthropicNetworkClient: AnthropicNetworkClient,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ProviderConnectionsUiState())
     val state: StateFlow<ProviderConnectionsUiState> = _state.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            _state.update { it.copy(hasLegacyCoarenaKey = !settingsRepository.getApiKey().isNullOrBlank()) }
+        }
         viewModelScope.launch {
             repository.connections.collect { items -> _state.update { it.copy(connections = items) } }
         }
