@@ -167,7 +167,7 @@ class CoarenaApiParserTest {
     @Test
     fun `parses Cloudflare Workers AI model search response`() {
         val models = parser.parseModels(
-            """{"success":true,"result":[{"id":"model-uuid","name":"@cf/meta/llama-test","description":"Test model"}]}""",
+            """{"success":true,"result":[{"id":"123e4567-e89b-12d3-a456-426614174000","name":"@cf/meta/llama-test","description":"Test model"}]}""",
         )
         assertEquals(1, models.size)
         assertEquals("@cf/meta/llama-test", models.first().id)
