@@ -92,6 +92,9 @@ interface ChatHistoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAttachments(attachments: List<ChatAttachmentEntity>)
 
+    @Query("SELECT * FROM chat_attachments WHERE message_id = :messageId")
+    suspend fun getAttachmentsForMessage(messageId: String): List<ChatAttachmentEntity>
+
     @Query("DELETE FROM chat_attachments WHERE message_id = :messageId")
     suspend fun deleteAttachmentsForMessage(messageId: String)
 
