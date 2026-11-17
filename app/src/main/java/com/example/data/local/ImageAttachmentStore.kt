@@ -76,7 +76,7 @@ class ImageAttachmentStore @Inject constructor(
     companion object {
         const val MAX_IMAGES = 8
         private const val MAX_DIMENSION = 2048
-        private const val MAX_FILE_BYTES = 6L * 1024L * 1024L
+        private const val MAX_FILE_BYTES = 5L * 1024L * 1024L
         private const val JPEG_QUALITY = 82
     }
 }
