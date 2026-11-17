@@ -205,7 +205,7 @@ class ChatViewModel @Inject constructor(
             val imported = mutableListOf<ChatAttachment>()
             try {
                 uris.take(remaining).forEach { uri ->
-                    imported += imageAttachmentStore.import(uri)
+                    imported += imageAttachmentStore.importImage(uri)
                 }
                 _uiState.update {
                     it.copy(pendingAttachments = it.pendingAttachments + imported, chatError = null)
