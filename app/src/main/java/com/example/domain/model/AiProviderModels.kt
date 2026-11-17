@@ -45,6 +45,8 @@ data class ProviderConnection(
     val credentialId: String,
     val wireFormat: ApiWireFormat = ApiWireFormat.CHAT_COMPLETIONS,
     val isEnabled: Boolean = true,
+    val displayName: String = providerId,
+    val defaultModelId: String? = null,
 )
 
 /**
