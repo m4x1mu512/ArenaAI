@@ -96,6 +96,7 @@ fun ProviderConnectionsSection(
                 )
                 OutlinedButton(
                     onClick = { presetMenuExpanded = true },
+                    enabled = state.editingConnectionId == null,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(selectedPreset.displayName)
