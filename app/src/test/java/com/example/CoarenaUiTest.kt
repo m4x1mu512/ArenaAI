@@ -1,5 +1,8 @@
 package com.example
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import com.example.data.local.ImageAttachmentStore
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
@@ -101,7 +104,7 @@ class CoarenaUiTest {
             replyChunks = listOf("Hello ", "from Coarena!"),
         )
         val fakeHistory = FakeChatHistoryRepository()
-        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory)
+        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory, ImageAttachmentStore(ApplicationProvider.getApplicationContext<Context>()))
 
         composeRule.setContent {
             CoarenaTheme {
