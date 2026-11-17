@@ -48,7 +48,7 @@ class AnthropicNetworkClient @Inject constructor(
                     .build()
                 client.newCall(request).execute().use { response ->
                     val body = response.body?.string().orEmpty()
-                    check(response.isSuccessful) { "Anthropic HTTP ${response.code}: ${body.take(400)}" }
+                    check(response.isSuccessful) { "Anthropic HTTP ${response.code}: ${redact(body, apiKey).take(400)}" }
                     val root = Json.parseToJsonElement(body).jsonObject
                     root["data"]?.jsonArray.orEmpty().mapNotNull { item ->
                         val model = item.jsonObject
@@ -99,7 +99,7 @@ class AnthropicNetworkClient @Inject constructor(
             val responseBody = response.body ?: error("Anthropic returned an empty response.")
             if (!response.isSuccessful) {
                 val errorBody = responseBody.string()
-                error("Anthropic HTTP ${response.code}: ${errorBody.take(500)}")
+                error("Anthropic HTTP ${response.code}: ${redact(errorBody, apiKey).take(500)}")
             }
             if (!useStreaming) {
                 val root = Json.parseToJsonElement(responseBody.string()).jsonObject
@@ -163,6 +163,9 @@ class AnthropicNetworkClient @Inject constructor(
             }
         }
     }.flowOn(Dispatchers.IO)
+
+    private fun redact(value: String, apiKey: String): String =
+        if (apiKey.isBlank()) value else value.replace(apiKey, "[REDACTED]")
 
     private fun buildContent(message: ChatMessage): JsonArray = buildJsonArray {
         if (message.content.isNotBlank()) {
