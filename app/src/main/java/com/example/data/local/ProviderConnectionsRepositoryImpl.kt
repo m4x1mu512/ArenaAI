@@ -6,6 +6,7 @@ import com.example.domain.model.ProviderConnection
 import com.example.domain.repository.ProviderConnectionsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -17,6 +18,9 @@ class ProviderConnectionsRepositoryImpl @Inject constructor(
 
     override val connections: Flow<List<ProviderConnection>> =
         preferencesManager.providerConnectionsFlow
+
+    override val isInitialized: Flow<Boolean> =
+        preferencesManager.providerConnectionsFlow.map { true }
 
     override val activeConnectionId: Flow<String?> =
         preferencesManager.activeProviderConnectionIdFlow
