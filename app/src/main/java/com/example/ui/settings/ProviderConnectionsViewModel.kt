@@ -173,12 +173,14 @@ class ProviderConnectionsViewModel @Inject constructor(
         }
     }
 
-    fun setActive(id: String) {
+    fun setActive(id: String?) {
         viewModelScope.launch {
             runCatching { repository.setActiveConnection(id) }
                 .onFailure { error -> _state.update { it.copy(error = error.message) } }
         }
     }
+
+    fun setLegacyCoarenaActive() = setActive(null)
 
     fun delete(id: String) {
         viewModelScope.launch {
