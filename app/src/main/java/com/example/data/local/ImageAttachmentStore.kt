@@ -19,7 +19,7 @@ import javax.inject.Singleton
 class ImageAttachmentStore @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
-    suspend fun import(uri: Uri): ChatAttachment = withContext(Dispatchers.IO) {
+    suspend fun importImage(uri: Uri): ChatAttachment = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
         val sourceMime = resolver.getType(uri)?.lowercase()
             ?: throw IllegalArgumentException("The selected file is not a supported image")
