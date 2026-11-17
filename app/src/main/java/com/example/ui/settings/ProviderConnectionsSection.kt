@@ -177,10 +177,10 @@ fun ProviderConnectionsSection(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
-                        value = state.defaultModelId,
-                        onValueChange = viewModel::setDefaultModelId,
-                        label = { Text("ID сторонней модели (необязательно)") },
-                        supportingText = { Text("Например: openai/gpt-4.1 или anthropic/claude-sonnet-4") },
+                        value = state.manualModelIds,
+                        onValueChange = viewModel::setManualModelIds,
+                        label = { Text("Дополнительные ID моделей (через запятую)") },
+                        supportingText = { Text("Например: openai/gpt-4.1, anthropic/claude-sonnet-4. Каталог Cloudflare автоматически загружает Workers AI.") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
