@@ -345,4 +345,23 @@ class CoarenaNetworkClientTest {
         }
     }
 
+
+    @Test
+    fun `adds Cloudflare AI Gateway ID header to streamed requests`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\\n\\n"),
+        )
+        client.streamChatCompletion(
+            baseUrl = baseUrl,
+            apiKey = "cf-test-token",
+            modelId = "@cf/meta/llama-test",
+            history = listOf(ChatMessage(id = "cf-1", role = MessageRole.USER, content = "Hi")),
+            systemPrompt = "",
+            requestHeaders = mapOf("cf-aig-gateway-id" to "default"),
+        ).toList()
+        assertEquals("default", server.takeRequest().getHeader("cf-aig-gateway-id"))
+    }
 }
