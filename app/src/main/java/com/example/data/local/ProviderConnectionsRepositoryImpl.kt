@@ -31,12 +31,19 @@ class ProviderConnectionsRepositoryImpl @Inject constructor(
         require(connection.id.matches(ID_PATTERN)) { "Invalid connection ID" }
         require(connection.credentialId.matches(ID_PATTERN)) { "Invalid credential ID" }
 
-        credentialStorage.saveProviderApiKey(connection.credentialId, apiKey)
         val current = connections.first()
         require(current.none { it.id == connection.id }) { "Connection already exists" }
-        preferencesManager.setProviderConnections(current + connection.copy(baseUrl = CoarenaUrlBuilder.normalizeBaseUrl(connection.baseUrl)))
-        if (makeActive || activeConnectionId.first() == null) {
-            preferencesManager.setActiveProviderConnectionId(connection.id)
+        credentialStorage.saveProviderApiKey(connection.credentialId, apiKey)
+        try {
+            preferencesManager.setProviderConnections(
+                current + connection.copy(baseUrl = CoarenaUrlBuilder.normalizeBaseUrl(connection.baseUrl)),
+            )
+            if (makeActive || activeConnectionId.first() == null) {
+                preferencesManager.setActiveProviderConnectionId(connection.id)
+            }
+        } catch (error: Throwable) {
+            credentialStorage.deleteProviderApiKey(connection.credentialId)
+            throw error
         }
     }
 
