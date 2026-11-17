@@ -35,7 +35,7 @@ interface SecureKeyStorage {
  */
 class AndroidKeystoreSecureStorage(
     context: Context,
-) : SecureKeyStorage {
+) : SecureKeyStorage, ProviderCredentialStorage {
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -81,6 +81,50 @@ class AndroidKeystoreSecureStorage(
         prefs.edit()
             .remove(KEY_IV)
             .remove(KEY_CIPHERTEXT)
+            .commit()
+        Unit
+    }
+
+
+    override suspend fun saveProviderApiKey(credentialId: String, apiKey: String) = withContext(Dispatchers.IO) {
+        require(credentialId.matches(Regex("[A-Za-z0-9_-]{1,80}"))) { "Invalid credential ID" }
+        val trimmed = apiKey.trim()
+        require(trimmed.isNotEmpty()) { "API key cannot be empty" }
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey())
+        cipher.updateAAD(credentialId.toByteArray(Charsets.UTF_8))
+        val encrypted = cipher.doFinal(trimmed.toByteArray(Charsets.UTF_8))
+        val prefix = "provider_${credentialId}_"
+        val saved = prefs.edit()
+            .putString(prefix + "iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+            .putString(prefix + "ciphertext", Base64.encodeToString(encrypted, Base64.NO_WRAP))
+            .commit()
+        check(saved) { "Unable to save provider credential" }
+    }
+
+    override suspend fun getProviderApiKey(credentialId: String): String? = withContext(Dispatchers.IO) {
+        if (!credentialId.matches(Regex("[A-Za-z0-9_-]{1,80}"))) return@withContext null
+        val prefix = "provider_${credentialId}_"
+        val ivText = prefs.getString(prefix + "iv", null) ?: return@withContext null
+        val encryptedText = prefs.getString(prefix + "ciphertext", null) ?: return@withContext null
+        runCatching {
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(
+                Cipher.DECRYPT_MODE,
+                getExistingSecretKey() ?: return@withContext null,
+                GCMParameterSpec(GCM_TAG_LENGTH, Base64.decode(ivText, Base64.NO_WRAP)),
+            )
+            cipher.updateAAD(credentialId.toByteArray(Charsets.UTF_8))
+            String(cipher.doFinal(Base64.decode(encryptedText, Base64.NO_WRAP)), Charsets.UTF_8)
+        }.getOrNull()
+    }
+
+    override suspend fun deleteProviderApiKey(credentialId: String) = withContext(Dispatchers.IO) {
+        require(credentialId.matches(Regex("[A-Za-z0-9_-]{1,80}"))) { "Invalid credential ID" }
+        val prefix = "provider_${credentialId}_"
+        prefs.edit()
+            .remove(prefix + "iv")
+            .remove(prefix + "ciphertext")
             .commit()
         Unit
     }
