@@ -1,7 +1,6 @@
 package com.example.data.remote
 
 import com.example.domain.model.AiProviderDescriptor
-import com.example.domain.model.ApiWireFormat
 import com.example.domain.model.ProviderCapabilities
 import com.example.domain.model.ProviderProtocol
 import com.example.domain.repository.ChatProvider
@@ -62,8 +61,7 @@ class CoarenaChatProviderAdapter @Inject constructor(
             history = request.history,
             systemPrompt = request.systemPrompt,
             useStreaming = request.useStreaming,
-            wireFormat = connection.wireFormat.takeIf { it == ApiWireFormat.RESPONSES }
-                ?: ApiWireFormat.CHAT_COMPLETIONS,
+            wireFormat = connection.wireFormat,
         )
     }
 
