@@ -91,7 +91,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.domain.model.AppError
-import com.example.domain.model.ChatAttachment
 import com.example.domain.model.ChatMessage
 import com.example.domain.model.MessageRole
 import com.example.ui.components.ErrorBannerCard
