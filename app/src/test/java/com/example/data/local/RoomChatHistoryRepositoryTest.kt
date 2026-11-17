@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.db.CoarenaDatabase
+import com.example.domain.model.ChatAttachment
+import com.example.domain.model.ChatAttachmentKind
 import com.example.domain.model.ChatMessage
 import com.example.domain.model.MessageRole
 import kotlinx.coroutines.flow.first
