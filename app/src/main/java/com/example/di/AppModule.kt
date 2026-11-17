@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.local.PreferencesManager
+import com.example.data.local.ProviderConnectionsRepositoryImpl
 import com.example.data.local.RoomChatHistoryRepository
 import com.example.data.local.SettingsRepositoryImpl
 import com.example.data.local.db.ChatHistoryDao
@@ -20,6 +21,7 @@ import com.example.domain.repository.ChatHistoryRepository
 import com.example.domain.repository.ChatProvider
 import com.example.domain.repository.CoarenaRepository
 import com.example.domain.repository.SettingsRepository
+import com.example.domain.repository.ProviderConnectionsRepository
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -153,6 +155,12 @@ object AppModule {
     fun provideSettingsRepository(
         impl: SettingsRepositoryImpl,
     ): SettingsRepository = impl
+
+    @Provides
+    @Singleton
+    fun provideProviderConnectionsRepository(
+        impl: ProviderConnectionsRepositoryImpl,
+    ): ProviderConnectionsRepository = impl
 
     @Provides
     @Singleton
