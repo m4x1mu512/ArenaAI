@@ -16,6 +16,7 @@ import com.example.domain.model.ThemeMode
 import com.example.domain.repository.ChatHistoryRepository
 import com.example.domain.repository.CoarenaRepository
 import com.example.domain.repository.SettingsRepository
+import com.example.domain.repository.ProviderConnectionsRepository
 import com.example.ui.common.toAppError
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
@@ -70,6 +71,7 @@ class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val coarenaRepository: CoarenaRepository,
     private val chatHistoryRepository: ChatHistoryRepository,
+    private val providerConnectionsRepository: ProviderConnectionsRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -338,6 +340,7 @@ class SettingsViewModel @Inject constructor(
     /** Clears all local credentials, preferences, and saved chat history and invokes [onDataCleared]. */
     fun clearAllLocalData(onDataCleared: () -> Unit) {
         viewModelScope.launch {
+            providerConnectionsRepository.clearAllConnections()
             settingsRepository.clearAllLocalData()
             chatHistoryRepository.clearAllHistory()
             _uiState.update { SettingsUiState() }
