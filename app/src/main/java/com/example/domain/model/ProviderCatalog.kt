@@ -86,6 +86,14 @@ object ProviderCatalog {
             description = "Модели с OpenAI-совместимым API",
         ),
         ProviderPreset(
+            id = "cloudflare",
+            displayName = "Cloudflare AI",
+            baseUrl = "https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1",
+            protocol = ProviderProtocol.OPENAI_COMPATIBLE,
+            description = "Workers AI и сторонние модели через AI Gateway",
+            requiresCustomHeaders = true,
+        ),
+        ProviderPreset(
             id = "xai",
             displayName = "xAI",
             baseUrl = "https://api.x.ai/v1",
