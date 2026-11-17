@@ -111,7 +111,7 @@ dependencies {
   implementation(libs.androidx.navigation.compose)
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
-  // implementation(libs.coil.compose)
+  implementation(libs.coil.compose)
   implementation(libs.converter.kotlinx.serialization)
   // implementation(libs.converter.moshi)
   // implementation(libs.firebase.ai)

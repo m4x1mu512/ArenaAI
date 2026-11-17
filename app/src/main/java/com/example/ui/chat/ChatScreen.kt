@@ -1,5 +1,8 @@
 package com.example.ui.chat
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -8,9 +11,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -26,6 +29,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,6 +37,8 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddComment
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ExpandMore
@@ -87,7 +93,9 @@ import com.example.domain.model.AppError
 import com.example.domain.model.ChatMessage
 import com.example.domain.model.MessageRole
 import com.example.ui.components.ErrorBannerCard
+import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
+import java.io.File
 import java.text.DateFormat
 import java.util.Date
 
@@ -101,10 +109,16 @@ fun ChatScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val systemPrompt = stringResource(R.string.chat_default_system_prompt)
+    val imagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 8),
+        onResult = viewModel::addImages,
+    )
 
     ChatScreenContent(
         uiState = uiState,
         onInputTextChange = viewModel::onInputTextChange,
+        onPickImages = { imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+        onRemovePendingImage = viewModel::removePendingImage,
         onSendMessage = { override -> viewModel.sendMessage(systemPrompt, override) },
         onStopGeneration = viewModel::stopGeneration,
         onSelectModel = viewModel::selectModel,
@@ -129,6 +143,8 @@ fun ChatScreen(
 fun ChatScreenContent(
     uiState: ChatUiState,
     onInputTextChange: (String) -> Unit,
+    onPickImages: () -> Unit = {},
+    onRemovePendingImage: (String) -> Unit = {},
     onSendMessage: (String?) -> Unit,
     onStopGeneration: () -> Unit,
     onSelectModel: (String) -> Unit,
@@ -277,18 +293,50 @@ fun ChatScreenContent(
                             .navigationBarsPadding()
                             .imePadding(),
                     ) {
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.Center,
+                        Column(
+                            modifier = Modifier
+                                .widthIn(max = 820.dp)
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
                         ) {
+                            if (uiState.pendingAttachments.isNotEmpty()) {
+                                LazyRow(
+                                    contentPadding = PaddingValues(bottom = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    items(uiState.pendingAttachments, key = { it.id }) { attachment ->
+                                        Box(modifier = Modifier.size(76.dp)) {
+                                            AsyncImage(
+                                                model = File(attachment.localPath),
+                                                contentDescription = attachment.fileName ?: "Attached image",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
+                                            )
+                                            IconButton(
+                                                onClick = { onRemovePendingImage(attachment.id) },
+                                                modifier = Modifier.align(Alignment.TopEnd).size(26.dp)
+                                                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), RoundedCornerShape(50)),
+                                            ) {
+                                                Icon(Icons.Filled.Close, contentDescription = "Remove image", modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             Row(
-                                modifier = Modifier
-                                    .widthIn(max = 820.dp)
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.Bottom,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
+                                if (!uiState.isSending) {
+                                    IconButton(
+                                        onClick = onPickImages,
+                                        enabled = uiState.pendingAttachments.size < 8,
+                                        modifier = Modifier.size(48.dp).testTag("attach_image_button"),
+                                    ) {
+                                        Icon(Icons.Filled.AttachFile, contentDescription = "Attach images")
+                                    }
+                                }
                                 OutlinedTextField(
                                     value = uiState.inputText,
                                     onValueChange = onInputTextChange,
@@ -334,7 +382,7 @@ fun ChatScreenContent(
                                                 onSendMessage(null)
                                             }
                                         },
-                                        enabled = uiState.inputText.isNotBlank(),
+                                        enabled = uiState.inputText.isNotBlank() || uiState.pendingAttachments.isNotEmpty(),
                                         modifier = Modifier
                                             .size(52.dp)
                                             .testTag("send_message_button"),
@@ -561,6 +609,7 @@ private fun EmptyChatState(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChatMessageBubble(
     message: ChatMessage,
@@ -662,7 +711,24 @@ private fun ChatMessageBubble(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            SelectionContainer {
+            if (message.attachments.isNotEmpty()) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    message.attachments.forEach { attachment ->
+                        AsyncImage(
+                            model = File(attachment.localPath),
+                            contentDescription = attachment.fileName ?: "Attached image",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(176.dp).clip(RoundedCornerShape(12.dp)),
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            if (message.content.isNotBlank() || message.isStreaming) SelectionContainer {
                 Text(
                     text = if (message.content.isEmpty() && message.isStreaming) {
                         stringResource(R.string.chat_streaming_indicator)
