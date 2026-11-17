@@ -24,6 +24,9 @@ data class ProviderConnectionsUiState(
     val selectedPresetId: String = ProviderCatalog.presets.first().id,
     val displayName: String = ProviderCatalog.presets.first().displayName,
     val baseUrl: String = ProviderCatalog.presets.first().baseUrl,
+    val accountId: String = "",
+    val gatewayId: String = "default",
+    val defaultModelId: String = "",
     val apiKey: String = "",
     val isTesting: Boolean = false,
     val testModelCount: Int? = null,
@@ -62,6 +65,9 @@ class ProviderConnectionsViewModel @Inject constructor(
                 selectedPresetId = preset.id,
                 displayName = preset.displayName,
                 baseUrl = preset.baseUrl,
+                accountId = "",
+                gatewayId = "default",
+                defaultModelId = "",
                 error = null,
                 testModelCount = null,
             )
@@ -78,6 +84,9 @@ class ProviderConnectionsViewModel @Inject constructor(
                 selectedPresetId = presetId,
                 displayName = connection.displayName,
                 baseUrl = connection.baseUrl,
+                accountId = Regex("/accounts/([^/]+)/ai/v1").find(connection.baseUrl)?.groupValues?.getOrNull(1).orEmpty(),
+                gatewayId = connection.gatewayId ?: "default",
+                defaultModelId = connection.defaultModelId.orEmpty(),
                 apiKey = "",
                 editingConnectionId = id,
                 error = null,
@@ -92,6 +101,9 @@ class ProviderConnectionsViewModel @Inject constructor(
 
     fun setDisplayName(value: String) = _state.update { it.copy(displayName = value, error = null) }
     fun setBaseUrl(value: String) = _state.update { it.copy(baseUrl = value, error = null, testModelCount = null) }
+    fun setAccountId(value: String) = _state.update { it.copy(accountId = value.trim(), error = null, testModelCount = null) }
+    fun setGatewayId(value: String) = _state.update { it.copy(gatewayId = value.trim(), error = null) }
+    fun setDefaultModelId(value: String) = _state.update { it.copy(defaultModelId = value.trim(), error = null) }
     fun setApiKey(value: String) = _state.update { it.copy(apiKey = value, error = null, testModelCount = null) }
 
     fun testConnection() {
