@@ -79,6 +79,12 @@ class ProviderConnectionsRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun clearAllConnections() {
+        connections.first().forEach { credentialStorage.deleteProviderApiKey(it.credentialId) }
+        preferencesManager.setProviderConnections(emptyList())
+        preferencesManager.setActiveProviderConnectionId(null)
+    }
+
     override suspend fun getActiveConnection(): ProviderConnection? {
         val activeId = activeConnectionId.first() ?: return null
         return connections.first().firstOrNull { it.id == activeId && it.isEnabled }
