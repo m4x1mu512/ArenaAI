@@ -352,7 +352,7 @@ class CoarenaNetworkClientTest {
             MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "text/event-stream")
-                .setBody("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\\n\\ndata: [DONE]\\n\\n"),
+                .setBody("""data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n"""),
         )
         client.streamChatCompletion(
             baseUrl = baseUrl,
