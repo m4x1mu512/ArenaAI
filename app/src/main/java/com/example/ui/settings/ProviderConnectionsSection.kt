@@ -155,6 +155,13 @@ fun ProviderConnectionsSection(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                if (state.selectedPresetId == "huggingface") {
+                    Text(
+                        "Используйте fine-grained токен Hugging Face с разрешением Make calls to Inference Providers. Поддерживается OpenAI-совместимый API для чата.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (state.selectedPresetId == "cloudflare") {
                     Text(
                         "Cloudflare AI объединяет Workers AI (@cf/...) и сторонние модели через AI Gateway (author/model).",
