@@ -79,7 +79,7 @@ class CoarenaNetworkClient @Inject constructor(
             if (trimmedKey.isEmpty()) {
                 return@withContext Result.failure(CoarenaApiException(AppError.MissingApiKey()))
             }
-            val url = "https://api.cloudflare.com/client/v4/accounts/$trimmedAccountId/ai/models/search?per_page=100&hide_experimental=true"
+            val url = "https://api.cloudflare.com/client/v4/accounts/$trimmedAccountId/ai/models/search?task=text-generation&per_page=100&hide_experimental=true"
             try {
                 val request = Request.Builder()
                     .url(url)
