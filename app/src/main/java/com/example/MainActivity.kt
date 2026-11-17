@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.model.AppSettings
 import com.example.domain.repository.SettingsRepository
+import com.example.domain.repository.ProviderConnectionsRepository
 import com.example.ui.navigation.ChatRoute
 import com.example.ui.navigation.CoarenaNavGraph
 import com.example.ui.navigation.SetupRoute
@@ -30,6 +31,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var settingsRepository: SettingsRepository
 
+    @Inject
+    lateinit var providerConnectionsRepository: ProviderConnectionsRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -39,6 +43,9 @@ class MainActivity : ComponentActivity() {
             )
             val isInitialized by settingsRepository.isInitialized.collectAsStateWithLifecycle(
                 initialValue = false,
+            )
+            val providerConnections by providerConnectionsRepository.connections.collectAsStateWithLifecycle(
+                initialValue = emptyList(),
             )
 
             CoarenaTheme(themeMode = settings.themeMode) {
@@ -51,7 +58,8 @@ class MainActivity : ComponentActivity() {
                             CircularProgressIndicator()
                         }
                     } else {
-                        val startRoute: Any = if (settings.hasApiKey) ChatRoute else SetupRoute
+                        val hasProviderConnection = providerConnections.any { it.isEnabled }
+                        val startRoute: Any = if (settings.hasApiKey || hasProviderConnection) ChatRoute else SetupRoute
                         CoarenaNavGraph(startDestination = startRoute)
                     }
                 }
