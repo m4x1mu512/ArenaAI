@@ -53,6 +53,7 @@ class CoarenaApiParser(
             is JsonArray -> root
             is JsonObject -> {
                 root["data"] as? JsonArray
+                    ?: root["result"] as? JsonArray
                     ?: root["models"] as? JsonArray
                     ?: root["items"] as? JsonArray
                     ?: emptyList()
