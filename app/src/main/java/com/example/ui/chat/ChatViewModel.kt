@@ -240,10 +240,12 @@ class ChatViewModel @Inject constructor(
     fun startNewChat() {
         streamJob?.cancel()
         streamJob = null
+        _uiState.value.pendingAttachments.forEach(imageAttachmentStore::delete)
         _uiState.update {
             it.copy(
                 currentSessionId = UUID.randomUUID().toString(),
                 messages = emptyList(),
+                pendingAttachments = emptyList(),
                 isSending = false,
                 chatError = null,
             )
