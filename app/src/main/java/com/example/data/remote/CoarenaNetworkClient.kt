@@ -66,6 +66,46 @@ class CoarenaNetworkClient @Inject constructor(
     }
 
     /**
+     * Fetches the account's Workers AI model catalog from Cloudflare.
+     * Third-party AI Gateway model IDs can be supplied manually in connection settings.
+     */
+    suspend fun fetchCloudflareModels(accountId: String, apiKey: String): Result<List<AiModel>> =
+        withContext(Dispatchers.IO) {
+            val trimmedAccountId = accountId.trim()
+            val trimmedKey = apiKey.trim()
+            if (!trimmedAccountId.matches(Regex("[A-Fa-f0-9]{32}"))) {
+                return@withContext Result.failure(IllegalArgumentException("Некорректный Cloudflare Account ID."))
+            }
+            if (trimmedKey.isEmpty()) {
+                return@withContext Result.failure(CoarenaApiException(AppError.MissingApiKey()))
+            }
+            val url = "https://api.cloudflare.com/client/v4/accounts/$trimmedAccountId/ai/models/search?per_page=100&hide_experimental=true"
+            try {
+                val request = Request.Builder()
+                    .url(url)
+                    .header("Authorization", "Bearer $trimmedKey")
+                    .header("Accept", "application/json")
+                    .get()
+                    .build()
+                okHttpClient.newCall(request).execute().use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        return@withContext Result.failure(
+                            CoarenaApiException(mapHttpStatus(response.code, raw, trimmedKey)),
+                        )
+                    }
+                    runCatching { parser.parseModels(raw) }
+                        .fold(
+                            onSuccess = { Result.success(it) },
+                            onFailure = { Result.failure(mapException(it, trimmedKey)) },
+                        )
+                }
+            } catch (error: Exception) {
+                Result.failure(mapException(error, trimmedKey))
+            }
+        }
+
+    /**
      * Fetches account credits from `{baseUrl}/credits`.
      */
     suspend fun fetchCredits(baseUrl: String, apiKey: String): Result<CreditsInfo> {
