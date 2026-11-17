@@ -22,6 +22,9 @@ interface CoarenaRepository {
     /** Persists a model selection for the active provider (or the legacy default). */
     suspend fun saveSelectedModel(modelId: String) {}
 
+    /** Returns the active provider's saved model, or the legacy default model. */
+    suspend fun getSelectedModelId(): String? = null
+
     /** Emits non-secret diagnostic details of the most recent chat completion request. */
     val lastRequestDiagnostic: StateFlow<RequestDiagnostic?>
 
