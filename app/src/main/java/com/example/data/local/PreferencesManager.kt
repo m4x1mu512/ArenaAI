@@ -144,6 +144,7 @@ class PreferencesManager(
                     put("isEnabled", connection.isEnabled)
                     put("displayName", connection.displayName)
                     connection.defaultModelId?.let { put("defaultModelId", it) }
+                    connection.gatewayId?.let { put("gatewayId", it) }
                 })
             }
         }.toString()
@@ -167,6 +168,7 @@ class PreferencesManager(
                 isEnabled = item["isEnabled"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: true,
                 displayName = item["displayName"]?.jsonPrimitive?.contentOrNull ?: providerId,
                 defaultModelId = item["defaultModelId"]?.jsonPrimitive?.contentOrNull,
+                gatewayId = item["gatewayId"]?.jsonPrimitive?.contentOrNull,
             )
         }
     }.getOrDefault(emptyList())
