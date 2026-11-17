@@ -65,10 +65,15 @@ class CoarenaRepositoryImpl @Inject constructor(
                 else -> networkClient.fetchModels(active.baseUrl, key)
             }
             return fetched.map { models ->
-                val manual = active.defaultModelId?.takeIf { it.isNotBlank() }
-                if (manual != null && models.none { it.id == manual }) {
-                    models + AiModel(id = manual, displayName = manual, ownedBy = "AI Gateway")
-                } else models
+                val manualIds = buildList {
+                    active.manualModelIds.orEmpty().split(',', '\n', ';').map(String::trim)
+                        .filter(String::isNotBlank).forEach(::add)
+                    active.defaultModelId?.takeIf { it.isNotBlank() }?.let(::add)
+                }.distinct()
+                manualIds.fold(models) { current, modelId ->
+                    if (current.any { it.id == modelId }) current
+                    else current + AiModel(id = modelId, displayName = modelId, ownedBy = "AI Gateway")
+                }
             }
         }
         val (settings, apiKey) = requireCredentialsAndSettings().getOrElse { return Result.failure(it) }
