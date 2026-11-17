@@ -163,7 +163,8 @@ class ChatViewModel @Inject constructor(
                 previousBaseUrl = settings.baseUrl
 
                 if (credentialsChanged && settings.hasApiKey) {
-                    loadModels(preferredModelId = settings.defaultModelId)
+                    val preferredModel = coarenaRepository.getSelectedModelId()
+                    loadModels(preferredModelId = preferredModel)
                 }
             }
         }
