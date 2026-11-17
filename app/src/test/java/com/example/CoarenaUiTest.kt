@@ -26,9 +26,11 @@ import com.example.domain.model.LimitsInfo
 import com.example.domain.model.MessageRole
 import com.example.domain.model.RequestDiagnostic
 import com.example.domain.model.RequestHistoryItem
+import com.example.domain.model.ProviderConnection
 import com.example.domain.model.ThemeMode
 import com.example.domain.repository.ChatHistoryRepository
 import com.example.domain.repository.CoarenaRepository
+import com.example.domain.repository.ProviderConnectionsRepository
 import com.example.domain.repository.SettingsRepository
 import com.example.ui.chat.ChatScreen
 import com.example.ui.chat.ChatViewModel
@@ -236,7 +238,7 @@ class CoarenaUiTest {
             models = listOf(AiModel(id = "coarena-pro", displayName = "Coarena Pro")),
         )
         val fakeHistory = FakeChatHistoryRepository()
-        val viewModel = SettingsViewModel(fakeSettings, fakeRepo, fakeHistory)
+        val viewModel = SettingsViewModel(fakeSettings, fakeRepo, fakeHistory, FakeProviderConnectionsRepository())
         var navigatedToSetup = false
 
         composeRule.setContent {
@@ -353,6 +355,19 @@ class CoarenaUiTest {
 
         assertEquals("deepseek-v4-1-flash-1017", fakeRepo.lastSentModelId)
         composeRule.onNodeWithText("deepseek-v4-1-flash-1017 → gpt-6-luna").assertIsDisplayed()
+    }
+
+    private class FakeProviderConnectionsRepository : ProviderConnectionsRepository {
+        override val connections: Flow<List<ProviderConnection>> = MutableStateFlow(emptyList())
+        override val activeConnectionId: Flow<String?> = MutableStateFlow(null)
+
+        override suspend fun addConnection(connection: ProviderConnection, apiKey: String, makeActive: Boolean) = Unit
+        override suspend fun updateConnection(connection: ProviderConnection, replacementApiKey: String?) = Unit
+        override suspend fun setActiveConnection(connectionId: String?) = Unit
+        override suspend fun deleteConnection(connectionId: String) = Unit
+        override suspend fun clearAllConnections() = Unit
+        override suspend fun getActiveConnection(): ProviderConnection? = null
+        override suspend fun getApiKey(connection: ProviderConnection): String? = null
     }
 
     private class FakeSettingsRepository(
