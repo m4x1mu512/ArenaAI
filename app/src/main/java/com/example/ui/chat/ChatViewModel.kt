@@ -255,7 +255,11 @@ class ChatViewModel @Inject constructor(
         modelAutoDefaultedFromFirst = false
         _uiState.update { it.copy(selectedModelId = modelId, chatError = null) }
         viewModelScope.launch {
-            coarenaRepository.saveSelectedModel(modelId)
+            if (coarenaRepository.activeProviderConnectionId.first() == null) {
+                settingsRepository.saveDefaultModel(modelId)
+            } else {
+                coarenaRepository.saveSelectedModel(modelId)
+            }
         }
     }
 
