@@ -108,7 +108,11 @@ class ProviderConnectionsViewModel @Inject constructor(
 
     fun testConnection() {
         val snapshot = _state.value
-        if (snapshot.baseUrl.isBlank()) {
+        if (snapshot.selectedPresetId == "cloudflare" && !snapshot.accountId.matches(Regex("[A-Fa-f0-9]{32}"))) {
+            _state.update { it.copy(error = "Укажите корректный Cloudflare Account ID (32 символа).") }
+            return
+        }
+        if (snapshot.selectedPresetId != "cloudflare" && snapshot.baseUrl.isBlank()) {
             _state.update { it.copy(error = "Укажите Base URL.") }
             return
         }
@@ -120,14 +124,14 @@ class ProviderConnectionsViewModel @Inject constructor(
                 existing?.let { repository.getApiKey(it) }.orEmpty()
             }
             if (effectiveKey.isBlank()) {
-                _state.update { it.copy(error = "Укажите API Key.") }
+                _state.update { it.copy(error = if (snapshot.selectedPresetId == "cloudflare") "Укажите Cloudflare API Token." else "Укажите API Key.") }
                 return@launch
             }
             _state.update { it.copy(isTesting = true, error = null, testModelCount = null) }
-            val result = if (snapshot.selectedPresetId == "anthropic") {
-                anthropicNetworkClient.fetchModels(snapshot.baseUrl.trim(), effectiveKey)
-            } else {
-                networkClient.fetchModels(snapshot.baseUrl.trim(), effectiveKey)
+            val result = when (snapshot.selectedPresetId) {
+                "anthropic" -> anthropicNetworkClient.fetchModels(snapshot.baseUrl.trim(), effectiveKey)
+                "cloudflare" -> networkClient.fetchCloudflareModels(snapshot.accountId, effectiveKey)
+                else -> networkClient.fetchModels(snapshot.baseUrl.trim(), effectiveKey)
             }
             _state.update {
                 if (result.isSuccess) it.copy(isTesting = false, testModelCount = result.getOrThrow().size)
@@ -138,10 +142,14 @@ class ProviderConnectionsViewModel @Inject constructor(
 
     fun saveConnection(onSaved: () -> Unit = {}) {
         val snapshot = _state.value
-        if (snapshot.displayName.isBlank() || snapshot.baseUrl.isBlank() ||
+        val resolvedBaseUrl = if (snapshot.selectedPresetId == "cloudflare") {
+            "https://api.cloudflare.com/client/v4/accounts/${snapshot.accountId.trim()}/ai/v1"
+        } else snapshot.baseUrl.trim()
+        if (snapshot.displayName.isBlank() || resolvedBaseUrl.isBlank() ||
+            (snapshot.selectedPresetId == "cloudflare" && !snapshot.accountId.matches(Regex("[A-Fa-f0-9]{32}"))) ||
             (snapshot.apiKey.isBlank() && snapshot.editingConnectionId == null)
         ) {
-            _state.update { it.copy(error = "Заполните название, Base URL и API Key.") }
+            _state.update { it.copy(error = "Заполните название, Account ID и API Token (для Cloudflare) или Base URL и API Key.") }
             return
         }
         val preset = ProviderCatalog.find(snapshot.selectedPresetId)
@@ -155,8 +163,10 @@ class ProviderConnectionsViewModel @Inject constructor(
                 if (editing != null) {
                     repository.updateConnection(
                         connection = editing.copy(
-                            baseUrl = snapshot.baseUrl.trim(),
+                            baseUrl = resolvedBaseUrl,
                             displayName = snapshot.displayName.trim(),
+                            gatewayId = snapshot.gatewayId.takeIf { snapshot.selectedPresetId == "cloudflare" },
+                            defaultModelId = snapshot.defaultModelId.takeIf { it.isNotBlank() },
                         ),
                         replacementApiKey = snapshot.apiKey.takeIf { it.isNotBlank() },
                     )
@@ -167,9 +177,11 @@ class ProviderConnectionsViewModel @Inject constructor(
                         connection = ProviderConnection(
                             id = id,
                             providerId = providerId,
-                            baseUrl = snapshot.baseUrl.trim(),
+                            baseUrl = resolvedBaseUrl,
                             credentialId = "provider_$id",
                             displayName = snapshot.displayName.trim(),
+                            gatewayId = snapshot.gatewayId.takeIf { snapshot.selectedPresetId == "cloudflare" },
+                            defaultModelId = snapshot.defaultModelId.takeIf { it.isNotBlank() },
                         ),
                         apiKey = snapshot.apiKey.trim(),
                         makeActive = true,
