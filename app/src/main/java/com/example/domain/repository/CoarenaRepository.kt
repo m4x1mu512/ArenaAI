@@ -13,7 +13,8 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * Repository for communicating with Coarena OpenAI-compatible and account endpoints.
+ * Repository for chat and model discovery across the legacy Coarena setup and configured providers.
+ * Account credits, limits, and request history remain Coarena-specific.
  */
 interface CoarenaRepository {
     /** Current selected provider connection; null means the legacy Coarena setup is active. */
