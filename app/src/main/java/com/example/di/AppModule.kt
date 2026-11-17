@@ -126,9 +126,15 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideSecureKeyStorage(
+    fun provideAndroidKeystoreSecureStorage(
         @ApplicationContext context: Context,
-    ): SecureKeyStorage = AndroidKeystoreSecureStorage(context)
+    ): AndroidKeystoreSecureStorage = AndroidKeystoreSecureStorage(context)
+
+    @Provides
+    @Singleton
+    fun provideSecureKeyStorage(
+        storage: AndroidKeystoreSecureStorage,
+    ): SecureKeyStorage = storage
 
     @Provides
     @Singleton
