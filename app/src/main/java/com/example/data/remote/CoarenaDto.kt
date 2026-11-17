@@ -76,3 +76,19 @@ data class ResponsesInputPartDto(
     val text: String? = null,
     @SerialName("image_url") val imageUrl: String? = null,
 )
+
+
+@Serializable
+data class ChatCompletionMultimodalRequestDto(
+    val model: String,
+    val messages: List<MultimodalChatMessageDto>,
+    val stream: Boolean = true,
+)
+
+@Serializable
+data class ResponsesMultimodalRequestDto(
+    val model: String,
+    val input: List<ResponsesInputMessageDto>,
+    val instructions: String? = null,
+    val stream: Boolean = true,
+)
