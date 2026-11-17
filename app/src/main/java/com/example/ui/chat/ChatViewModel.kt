@@ -54,6 +54,7 @@ class ChatViewModel @Inject constructor(
     private val coarenaRepository: CoarenaRepository,
     private val settingsRepository: SettingsRepository,
     private val chatHistoryRepository: ChatHistoryRepository,
+    private val imageAttachmentStore: ImageAttachmentStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
