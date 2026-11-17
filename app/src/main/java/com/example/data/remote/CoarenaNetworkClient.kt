@@ -105,6 +105,7 @@ class CoarenaNetworkClient @Inject constructor(
         systemPrompt: String,
         useStreaming: Boolean = true,
         wireFormat: ApiWireFormat = ApiWireFormat.CHAT_COMPLETIONS,
+        requestHeaders: Map<String, String> = emptyMap(),
     ): Flow<ChatStreamEvent> = flow {
         val trimmedKey = apiKey.trim()
         if (trimmedKey.isEmpty()) {
@@ -243,6 +244,7 @@ class CoarenaNetworkClient @Inject constructor(
                 requestBodyJson = encodePayload(stream = false),
                 sentModelId = trimmedModelId,
                 wireFormat = wireFormat,
+                requestHeaders = requestHeaders,
             )
             nonStreamingResult.fold(
                 onSuccess = { completed -> emit(completed) },
@@ -265,6 +267,7 @@ class CoarenaNetworkClient @Inject constructor(
                 .header("Authorization", "Bearer $trimmedKey")
                 .header("Content-Type", "application/json")
                 .header("Accept", "text/event-stream")
+                .apply { requestHeaders.forEach { (name, value) -> header(name, value) } }
                 .post(requestBodyJson.toRequestBody("application/json".toMediaType()))
                 .build()
 
@@ -409,6 +412,7 @@ class CoarenaNetworkClient @Inject constructor(
                 requestBodyJson = encodePayload(stream = false),
                 sentModelId = trimmedModelId,
                 wireFormat = wireFormat,
+                requestHeaders = requestHeaders,
             )
             fallbackResult.fold(
                 onSuccess = { completed -> emit(completed) },
@@ -425,6 +429,7 @@ class CoarenaNetworkClient @Inject constructor(
         requestBodyJson: String,
         sentModelId: String,
         wireFormat: ApiWireFormat,
+        requestHeaders: Map<String, String> = emptyMap(),
     ): Result<ChatStreamEvent.Completed> = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
@@ -432,6 +437,7 @@ class CoarenaNetworkClient @Inject constructor(
                 .header("Authorization", "Bearer $apiKey")
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
+                .apply { requestHeaders.forEach { (name, value) -> header(name, value) } }
                 .post(requestBodyJson.toRequestBody("application/json".toMediaType()))
                 .build()
 
