@@ -47,6 +47,7 @@ data class ProviderConnection(
     val isEnabled: Boolean = true,
     val displayName: String = providerId,
     val defaultModelId: String? = null,
+    val gatewayId: String? = null,
 )
 
 /**
