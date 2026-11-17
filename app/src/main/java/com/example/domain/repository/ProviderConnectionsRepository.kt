@@ -15,6 +15,7 @@ interface ProviderConnectionsRepository {
     suspend fun updateConnection(connection: ProviderConnection, replacementApiKey: String? = null)
     suspend fun setActiveConnection(connectionId: String?)
     suspend fun deleteConnection(connectionId: String)
+    suspend fun clearAllConnections()
     suspend fun getActiveConnection(): ProviderConnection?
     suspend fun getApiKey(connection: ProviderConnection): String?
 }
