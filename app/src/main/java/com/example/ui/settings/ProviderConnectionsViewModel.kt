@@ -118,7 +118,7 @@ class ProviderConnectionsViewModel @Inject constructor(
         }
     }
 
-    fun saveConnection() {
+    fun saveConnection(onSaved: () -> Unit = {}) {
         val snapshot = _state.value
         if (snapshot.displayName.isBlank() || snapshot.baseUrl.isBlank() ||
             (snapshot.apiKey.isBlank() && snapshot.editingConnectionId == null)
@@ -167,6 +167,7 @@ class ProviderConnectionsViewModel @Inject constructor(
                         testModelCount = null,
                     )
                 }
+                onSaved()
             }.onFailure { error ->
                 _state.update { it.copy(isSaving = false, error = error.message ?: "Не удалось сохранить подключение.") }
             }
