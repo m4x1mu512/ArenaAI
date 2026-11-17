@@ -66,6 +66,7 @@ data class AiModel(
     val displayName: String = id,
     val ownedBy: String? = null,
     val contextLength: Int? = null,
+    val capabilities: ProviderCapabilities = ProviderCapabilities(),
 )
 
 /**
