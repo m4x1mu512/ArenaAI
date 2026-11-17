@@ -21,6 +21,7 @@ class ProviderCatalogTest {
             "mistral",
             "together",
             "xai",
+            "cloudflare",
         )))
         assertEquals(ProviderProtocol.ANTHROPIC_MESSAGES, ProviderCatalog.find("anthropic")?.protocol)
         assertNotNull(ProviderCatalog.customPreset)
