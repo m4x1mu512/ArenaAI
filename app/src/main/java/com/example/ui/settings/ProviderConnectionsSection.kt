@@ -155,17 +155,48 @@ fun ProviderConnectionsSection(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedTextField(
-                    value = state.baseUrl,
-                    onValueChange = viewModel::setBaseUrl,
-                    label = { Text("Base URL") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                if (state.selectedPresetId == "cloudflare") {
+                    Text(
+                        "Cloudflare AI объединяет Workers AI (@cf/...) и сторонние модели через AI Gateway (author/model).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = state.accountId,
+                        onValueChange = viewModel::setAccountId,
+                        label = { Text("Cloudflare Account ID") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = state.gatewayId,
+                        onValueChange = viewModel::setGatewayId,
+                        label = { Text("AI Gateway ID") },
+                        supportingText = { Text("Обычно default. Для Workers AI поле обязательно.") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = state.defaultModelId,
+                        onValueChange = viewModel::setDefaultModelId,
+                        label = { Text("ID сторонней модели (необязательно)") },
+                        supportingText = { Text("Например: openai/gpt-4.1 или anthropic/claude-sonnet-4") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = state.baseUrl,
+                        onValueChange = viewModel::setBaseUrl,
+                        label = { Text("Base URL") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 OutlinedTextField(
                     value = state.apiKey,
                     onValueChange = viewModel::setApiKey,
-                    label = { Text("API Key") },
+                    label = { Text(if (state.selectedPresetId == "cloudflare") "Cloudflare API Token" else "API Key") },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
