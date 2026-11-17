@@ -29,6 +29,8 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Response
 import okhttp3.ResponseBody
+import java.io.File
+import android.util.Base64
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -48,6 +50,8 @@ class CoarenaNetworkClient @Inject constructor(
 ) {
 
     private val _lastRequestDiagnostic = MutableStateFlow<RequestDiagnostic?>(null)
+
+    private companion object { const val MAX_MULTIMODAL_IMAGE_BYTES = 6L * 1024L * 1024L }
 
     /** Latest non-secret request diagnostic snapshot for troubleshooting. */
     val lastRequestDiagnostic: StateFlow<RequestDiagnostic?> = _lastRequestDiagnostic.asStateFlow()
@@ -116,31 +120,109 @@ class CoarenaNetworkClient @Inject constructor(
             .getOrThrow()
 
         val conversationMessages = history
-            .filter { !it.isError && it.content.isNotBlank() }
-            .map { msg -> ChatMessageDto(role = msg.role.apiValue, content = msg.content) }
-
+            .filter { !it.isError && (it.content.isNotBlank() || it.attachments.isNotEmpty()) }
+        val hasImages = conversationMessages.any { it.attachments.isNotEmpty() }
         val chatMessagesWithSystem = buildList {
             if (systemPrompt.isNotBlank()) {
                 add(ChatMessageDto(role = MessageRole.SYSTEM.apiValue, content = systemPrompt))
             }
-            addAll(conversationMessages)
+            addAll(conversationMessages.map { msg ->
+                ChatMessageDto(role = msg.role.apiValue, content = msg.content)
+            })
         }
 
         fun encodePayload(stream: Boolean): String {
+            if (!hasImages) {
+                return if (wireFormat == ApiWireFormat.RESPONSES) {
+                    json.encodeToString(
+                        ResponsesRequestDto(
+                            model = trimmedModelId,
+                            input = conversationMessages.map { ChatMessageDto(it.role.apiValue, it.content) },
+                            instructions = systemPrompt.takeIf { it.isNotBlank() },
+                            stream = stream,
+                        ),
+                    )
+                } else {
+                    json.encodeToString(
+                        ChatCompletionRequestDto(
+                            model = trimmedModelId,
+                            messages = chatMessagesWithSystem,
+                            stream = stream,
+                        ),
+                    )
+                }
+            }
+
+            var totalImageBytes = 0L
+            fun imageDataUrl(localPath: String, mimeType: String): String {
+                val file = File(localPath)
+                if (!file.isFile) throw IOException("An attached image is no longer available")
+                totalImageBytes += file.length()
+                if (totalImageBytes > MAX_MULTIMODAL_IMAGE_BYTES) {
+                    throw IOException("Attached images exceed the 6 MiB request limit")
+                }
+                val bytes = file.readBytes()
+                return "data:$mimeType;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
+            }
+
             return if (wireFormat == ApiWireFormat.RESPONSES) {
+                val inputs = buildList {
+                    if (systemPrompt.isNotBlank()) {
+                        add(ResponsesInputMessageDto(
+                            role = MessageRole.SYSTEM.apiValue,
+                            content = listOf(ResponsesInputPartDto(type = "input_text", text = systemPrompt)),
+                        ))
+                    }
+                    conversationMessages.forEach { msg ->
+                        val parts = buildList {
+                            if (msg.content.isNotBlank()) {
+                                add(ResponsesInputPartDto(type = "input_text", text = msg.content))
+                            }
+                            msg.attachments.forEach { attachment ->
+                                add(ResponsesInputPartDto(
+                                    type = "input_image",
+                                    imageUrl = imageDataUrl(attachment.localPath, attachment.mimeType),
+                                ))
+                            }
+                        }
+                        add(ResponsesInputMessageDto(role = msg.role.apiValue, content = parts))
+                    }
+                }
                 json.encodeToString(
-                    ResponsesRequestDto(
+                    ResponsesMultimodalRequestDto(
                         model = trimmedModelId,
-                        input = conversationMessages,
-                        instructions = systemPrompt.takeIf { it.isNotBlank() },
+                        input = inputs,
+                        instructions = null,
                         stream = stream,
                     ),
                 )
             } else {
+                val messages = buildList {
+                    if (systemPrompt.isNotBlank()) {
+                        add(MultimodalChatMessageDto(
+                            role = MessageRole.SYSTEM.apiValue,
+                            content = listOf(MultimodalContentPartDto(type = "text", text = systemPrompt)),
+                        ))
+                    }
+                    conversationMessages.forEach { msg ->
+                        val parts = buildList {
+                            if (msg.content.isNotBlank()) {
+                                add(MultimodalContentPartDto(type = "text", text = msg.content))
+                            }
+                            msg.attachments.forEach { attachment ->
+                                add(MultimodalContentPartDto(
+                                    type = "image_url",
+                                    imageUrl = ImageUrlDto(imageDataUrl(attachment.localPath, attachment.mimeType)),
+                                ))
+                            }
+                        }
+                        add(MultimodalChatMessageDto(role = msg.role.apiValue, content = parts))
+                    }
+                }
                 json.encodeToString(
-                    ChatCompletionRequestDto(
+                    ChatCompletionMultimodalRequestDto(
                         model = trimmedModelId,
-                        messages = chatMessagesWithSystem,
+                        messages = messages,
                         stream = stream,
                     ),
                 )
