@@ -179,7 +179,11 @@ class SettingsViewModel @Inject constructor(
     fun selectDefaultModel(modelId: String) {
         _uiState.update { it.copy(defaultModelId = modelId) }
         viewModelScope.launch {
-            coarenaRepository.saveSelectedModel(modelId)
+            if (coarenaRepository.activeProviderConnectionId.first() == null) {
+                settingsRepository.saveDefaultModel(modelId)
+            } else {
+                coarenaRepository.saveSelectedModel(modelId)
+            }
         }
     }
 
