@@ -47,10 +47,13 @@ class MainActivity : ComponentActivity() {
             val providerConnections by providerConnectionsRepository.connections.collectAsStateWithLifecycle(
                 initialValue = emptyList(),
             )
+            val areProvidersInitialized by providerConnectionsRepository.isInitialized.collectAsStateWithLifecycle(
+                initialValue = false,
+            )
 
             CoarenaTheme(themeMode = settings.themeMode) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    if (!isInitialized) {
+                    if (!isInitialized || !areProvidersInitialized) {
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center,
