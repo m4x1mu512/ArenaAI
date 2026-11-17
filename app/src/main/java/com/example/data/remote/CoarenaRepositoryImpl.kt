@@ -67,7 +67,7 @@ class CoarenaRepositoryImpl @Inject constructor(
             return fetched.map { models ->
                 val manualIds = buildList {
                     active.manualModelIds.orEmpty().split(',', '\n', ';').map(String::trim)
-                        .filter(String::isNotBlank).forEach(::add)
+                        .filter(String::isNotBlank).forEach { add(it) }
                     active.defaultModelId?.takeIf { it.isNotBlank() }?.let(::add)
                 }.distinct()
                 manualIds.fold(models) { current, modelId ->
