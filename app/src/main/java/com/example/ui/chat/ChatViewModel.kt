@@ -256,6 +256,7 @@ class ChatViewModel @Inject constructor(
     fun selectSession(sessionId: String) {
         streamJob?.cancel()
         streamJob = null
+        _uiState.value.pendingAttachments.forEach(imageAttachmentStore::delete)
         hasUserExplicitlySelectedModel = true
         modelRestoredFromSession = false
         modelAutoDefaultedFromFirst = false
@@ -274,6 +275,7 @@ class ChatViewModel @Inject constructor(
                 state.copy(
                     currentSessionId = sessionId,
                     messages = savedMessages,
+                    pendingAttachments = emptyList(),
                     selectedModelId = updatedModel,
                     isSending = false,
                     chatError = null,
