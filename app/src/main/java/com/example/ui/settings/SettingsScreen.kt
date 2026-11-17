@@ -89,6 +89,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToSetup: () -> Unit,
     onProviderSaved: () -> Unit = {},
+    showProviderConnections: Boolean = true,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -111,6 +112,7 @@ fun SettingsScreen(
         onClearAllConfirmed = { viewModel.clearAllLocalData(onNavigateToSetup) },
         onConsumeSavedConfirmation = viewModel::consumeSavedConfirmation,
         onProviderSaved = onProviderSaved,
+        showProviderConnections = showProviderConnections,
     )
 }
 
@@ -138,6 +140,7 @@ fun SettingsScreenContent(
     onClearAllConfirmed: () -> Unit,
     onConsumeSavedConfirmation: () -> Unit,
     onProviderSaved: () -> Unit = {},
+    showProviderConnections: Boolean = true,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val savedMsg = stringResource(R.string.settings_saved_snackbar)
@@ -201,7 +204,9 @@ fun SettingsScreenContent(
             ) {
                 // Section 1: Credentials & Connection
                 SettingsSectionHeader(stringResource(R.string.settings_section_connection))
-                ProviderConnectionsSection(onConnectionSaved = onProviderSaved)
+                if (showProviderConnections) {
+                    ProviderConnectionsSection(onConnectionSaved = onProviderSaved)
+                }
 
                 Card(
                     colors = CardDefaults.cardColors(
