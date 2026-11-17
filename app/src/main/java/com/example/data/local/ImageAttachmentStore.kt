@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import androidx.core.content.ContextCompat
 import com.example.domain.model.ChatAttachment
 import com.example.domain.model.ChatAttachmentKind
 import dagger.hilt.android.qualifiers.ApplicationContext
