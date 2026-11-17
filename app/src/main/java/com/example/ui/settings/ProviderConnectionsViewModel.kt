@@ -181,7 +181,7 @@ class ProviderConnectionsViewModel @Inject constructor(
                             credentialId = "provider_$id",
                             displayName = snapshot.displayName.trim(),
                             gatewayId = snapshot.gatewayId.takeIf { snapshot.selectedPresetId == "cloudflare" },
-                            defaultModelId = snapshot.defaultModelId.takeIf { it.isNotBlank() },
+                            manualModelIds = snapshot.manualModelIds.trim().takeIf { it.isNotBlank() },
                         ),
                         apiKey = snapshot.apiKey.trim(),
                         makeActive = true,
