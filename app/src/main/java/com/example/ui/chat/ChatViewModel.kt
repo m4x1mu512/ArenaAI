@@ -378,7 +378,8 @@ class ChatViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 messages = it.messages + userMessage + assistantPlaceholder,
-                inputText = if (overrideText == null) "" else it.inputText,\n                pendingAttachments = emptyList(),
+                inputText = if (overrideText == null) "" else it.inputText,
+                pendingAttachments = emptyList(),
                 isSending = true,
                 chatError = null,
             )
