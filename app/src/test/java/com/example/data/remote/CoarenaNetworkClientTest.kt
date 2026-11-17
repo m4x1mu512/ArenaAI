@@ -2,6 +2,8 @@ package com.example.data.remote
 
 import com.example.domain.model.ApiWireFormat
 import com.example.domain.model.AppError
+import com.example.domain.model.ChatAttachment
+import com.example.domain.model.ChatAttachmentKind
 import com.example.domain.model.ChatMessage
 import com.example.domain.model.ChatStreamEvent
 import com.example.domain.model.MessageRole
@@ -17,6 +19,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.File
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 
@@ -297,4 +300,49 @@ class CoarenaNetworkClientTest {
         assertFalse(diag.stream)
         assertEquals(200, diag.httpStatusCode)
     }
+    @Test
+    fun `sends image attachments as OpenAI compatible image url parts`() = runTest {
+        val imageFile = File.createTempFile("arena-image", ".jpg")
+        imageFile.writeBytes(byteArrayOf(1, 2, 3, 4, 5))
+        try {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setHeader("Content-Type", "application/json")
+                    .setBody("""{"choices":[{"message":{"role":"assistant","content":"I can see it"}}]}"""),
+            )
+
+            client.streamChatCompletion(
+                baseUrl = baseUrl,
+                apiKey = "sk-test-image-key",
+                modelId = "gpt-6-luna",
+                history = listOf(
+                    ChatMessage(
+                        id = "image-message",
+                        role = MessageRole.USER,
+                        content = "What is in this image?",
+                        attachments = listOf(
+                            ChatAttachment(
+                                id = "image-1",
+                                localPath = imageFile.absolutePath,
+                                mimeType = "image/jpeg",
+                                sizeBytes = imageFile.length(),
+                                kind = ChatAttachmentKind.USER_IMAGE,
+                            ),
+                        ),
+                    ),
+                ),
+                systemPrompt = "",
+                useStreaming = false,
+            ).toList()
+
+            val body = server.takeRequest().body.readUtf8()
+            assertTrue(body.contains(""""type":"image_url""""))
+            assertTrue(body.contains(""""url":"data:image/jpeg;base64,"""))
+            assertTrue(body.contains(""""text":"What is in this image?""""))
+        } finally {
+            imageFile.delete()
+        }
+    }
+
 }
