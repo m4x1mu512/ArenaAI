@@ -198,6 +198,7 @@ fun SettingsScreenContent(
             ) {
                 // Section 1: Credentials & Connection
                 SettingsSectionHeader(stringResource(R.string.settings_section_connection))
+                ProviderConnectionsSection()
 
                 Card(
                     colors = CardDefaults.cardColors(
