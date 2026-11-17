@@ -159,7 +159,7 @@ class CoarenaUiTest {
                 ),
             )
         }
-        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory)
+        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory, ImageAttachmentStore(ApplicationProvider.getApplicationContext<Context>()))
 
         composeRule.setContent {
             CoarenaTheme {
@@ -206,7 +206,7 @@ class CoarenaUiTest {
             chatError = AppError.Unauthorized("HTTP 401: Invalid key [REDACTED]"),
         )
         val fakeHistory = FakeChatHistoryRepository()
-        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory)
+        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory, ImageAttachmentStore(ApplicationProvider.getApplicationContext<Context>()))
 
         composeRule.setContent {
             CoarenaTheme {
@@ -288,7 +288,7 @@ class CoarenaUiTest {
                 ),
             )
         }
-        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory)
+        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory, ImageAttachmentStore(ApplicationProvider.getApplicationContext<Context>()))
 
         composeRule.setContent {
             CoarenaTheme {
@@ -329,7 +329,7 @@ class CoarenaUiTest {
             responseModelId = "gpt-6-luna",
         )
         val fakeHistory = FakeChatHistoryRepository()
-        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory)
+        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory, ImageAttachmentStore(ApplicationProvider.getApplicationContext<Context>()))
 
         composeRule.setContent {
             CoarenaTheme {
