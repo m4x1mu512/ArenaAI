@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.Flow
  */
 interface ProviderConnectionsRepository {
     val connections: Flow<List<ProviderConnection>>
+    val isInitialized: Flow<Boolean>
     val activeConnectionId: Flow<String?>
 
     suspend fun addConnection(connection: ProviderConnection, apiKey: String, makeActive: Boolean = true)
