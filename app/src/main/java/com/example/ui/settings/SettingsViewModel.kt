@@ -94,11 +94,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val settings = settingsRepository.settingsFlow.first()
             val hasKey = !settingsRepository.getApiKey().isNullOrBlank()
+            val selectedModelId = coarenaRepository.getSelectedModelId()
             _uiState.update {
                 it.copy(
                     hasSavedApiKey = hasKey,
                     baseUrlInput = settings.baseUrl,
-                    defaultModelId = coarenaRepository.getSelectedModelId(),
+                    defaultModelId = selectedModelId,
                     themeMode = settings.themeMode,
                     useStreaming = settings.useStreaming,
                     wireFormat = settings.wireFormat,
