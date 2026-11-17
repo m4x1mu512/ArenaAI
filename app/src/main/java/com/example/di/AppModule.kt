@@ -14,6 +14,7 @@ import com.example.data.remote.CoarenaChatProviderAdapter
 import com.example.data.remote.CoarenaRepositoryImpl
 import com.example.data.remote.CoarenaRetrofitService
 import com.example.data.security.AndroidKeystoreSecureStorage
+import com.example.data.security.ProviderCredentialStorage
 import com.example.data.security.SecureKeyStorage
 import com.example.domain.repository.ChatHistoryRepository
 import com.example.domain.repository.ChatProvider
@@ -128,6 +129,12 @@ object AppModule {
     fun provideSecureKeyStorage(
         @ApplicationContext context: Context,
     ): SecureKeyStorage = AndroidKeystoreSecureStorage(context)
+
+    @Provides
+    @Singleton
+    fun provideProviderCredentialStorage(
+        storage: AndroidKeystoreSecureStorage,
+    ): ProviderCredentialStorage = storage
 
     @Provides
     @Singleton
