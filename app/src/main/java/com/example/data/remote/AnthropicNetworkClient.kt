@@ -117,6 +117,7 @@ class AnthropicNetworkClient @Inject constructor(
                 var responseModel: String? = null
                 var outputTokens: Int? = null
                 var accumulated = StringBuilder()
+                var completed = false
                 while (!source.exhausted()) {
                     currentCoroutineContext().ensureActive()
                     val line = source.readUtf8Line() ?: continue
@@ -142,6 +143,7 @@ class AnthropicNetworkClient @Inject constructor(
                                 ?.get("output_tokens")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
                         }
                         "message_stop" -> {
+                            completed = true
                             emit(ChatStreamEvent.Completed(
                                 fullText = accumulated.toString(),
                                 totalTokens = outputTokens,
@@ -151,7 +153,7 @@ class AnthropicNetworkClient @Inject constructor(
                         "error" -> error("Anthropic stream returned an error.")
                     }
                 }
-                if (accumulated.isNotEmpty()) {
+                if (!completed && accumulated.isNotEmpty()) {
                     emit(ChatStreamEvent.Completed(
                         fullText = accumulated.toString(),
                         totalTokens = outputTokens,
