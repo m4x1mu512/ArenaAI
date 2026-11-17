@@ -56,10 +56,19 @@ class CoarenaRepositoryImpl @Inject constructor(
         if (active != null) {
             val key = providerConnectionsRepository.getApiKey(active)?.takeIf { it.isNotBlank() }
                 ?: return Result.failure(CoarenaApiException(AppError.MissingApiKey()))
-            return if (active.providerId == "anthropic") {
-                anthropicNetworkClient.fetchModels(active.baseUrl, key)
-            } else {
-                networkClient.fetchModels(active.baseUrl, key)
+            val fetched = when (active.providerId) {
+                "anthropic" -> anthropicNetworkClient.fetchModels(active.baseUrl, key)
+                "cloudflare" -> {
+                    val accountId = Regex("/accounts/([^/]+)/ai/v1").find(active.baseUrl)?.groupValues?.getOrNull(1).orEmpty()
+                    networkClient.fetchCloudflareModels(accountId, key)
+                }
+                else -> networkClient.fetchModels(active.baseUrl, key)
+            }
+            return fetched.map { models ->
+                val manual = active.defaultModelId?.takeIf { it.isNotBlank() }
+                if (manual != null && models.none { it.id == manual }) {
+                    models + AiModel(id = manual, displayName = manual, ownedBy = "AI Gateway")
+                } else models
             }
         }
         val (settings, apiKey) = requireCredentialsAndSettings().getOrElse { return Result.failure(it) }
@@ -118,6 +127,9 @@ class CoarenaRepositoryImpl @Inject constructor(
                     systemPrompt = systemPrompt,
                     useStreaming = settings.useStreaming,
                     wireFormat = active.wireFormat,
+                    requestHeaders = if (active.providerId == "cloudflare") {
+                        mapOf("cf-aig-gateway-id" to (active.gatewayId?.takeIf { it.isNotBlank() } ?: "default"))
+                    } else emptyMap(),
                 )
             }
             emitAll(events)
