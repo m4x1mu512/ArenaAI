@@ -10,11 +10,13 @@ import com.example.data.local.SettingsRepositoryImpl
 import com.example.data.local.db.ChatHistoryDao
 import com.example.data.local.db.CoarenaDatabase
 import com.example.data.remote.CoarenaApiParser
+import com.example.data.remote.CoarenaChatProviderAdapter
 import com.example.data.remote.CoarenaRepositoryImpl
 import com.example.data.remote.CoarenaRetrofitService
 import com.example.data.security.AndroidKeystoreSecureStorage
 import com.example.data.security.SecureKeyStorage
 import com.example.domain.repository.ChatHistoryRepository
+import com.example.domain.repository.ChatProvider
 import com.example.domain.repository.CoarenaRepository
 import com.example.domain.repository.SettingsRepository
 import dagger.Module
@@ -144,6 +146,12 @@ object AppModule {
     fun provideCoarenaRepository(
         impl: CoarenaRepositoryImpl,
     ): CoarenaRepository = impl
+
+    @Provides
+    @Singleton
+    fun provideChatProvider(
+        adapter: CoarenaChatProviderAdapter,
+    ): ChatProvider = adapter
 
     @Provides
     @Singleton
