@@ -80,6 +80,27 @@ class SettingsViewModel @Inject constructor(
     init {
         loadInitialState()
         observeDiagnostic()
+        observeProviderSelection()
+    }
+
+    private fun observeProviderSelection() {
+        viewModelScope.launch {
+            var initial = true
+            providerConnectionsRepository.activeConnectionId.collect { id ->
+                if (!initial) {
+                    val selectedModel = coarenaRepository.getSelectedModelId()
+                    _uiState.update { it.copy(defaultModelId = selectedModel) }
+                    val hasCredentials = if (id != null) {
+                        providerConnectionsRepository.getActiveConnection()
+                            ?.let { !providerConnectionsRepository.getApiKey(it).isNullOrBlank() } == true
+                    } else {
+                        !settingsRepository.getApiKey().isNullOrBlank()
+                    }
+                    if (hasCredentials) refreshAccountData()
+                }
+                initial = false
+            }
+        }
     }
 
     private fun observeDiagnostic() {
@@ -94,6 +115,8 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val settings = settingsRepository.settingsFlow.first()
             val hasKey = !settingsRepository.getApiKey().isNullOrBlank()
+            val activeConnection = providerConnectionsRepository.getActiveConnection()
+            val hasActiveKey = activeConnection?.let { !providerConnectionsRepository.getApiKey(it).isNullOrBlank() } == true
             val selectedModelId = coarenaRepository.getSelectedModelId()
             _uiState.update {
                 it.copy(
@@ -106,7 +129,7 @@ class SettingsViewModel @Inject constructor(
                     lastDiagnostic = coarenaRepository.lastRequestDiagnostic.value,
                 )
             }
-            if (hasKey) {
+            if (hasKey || hasActiveKey) {
                 refreshAccountData()
             }
         }
