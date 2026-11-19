@@ -242,7 +242,9 @@ class CoarenaNetworkClient @Inject constructor(
 
         val conversationMessages = history
             .filter { !it.isError && (it.content.isNotBlank() || it.attachments.isNotEmpty()) }
-        val hasImages = conversationMessages.any { it.attachments.isNotEmpty() }
+        // Generated assistant images stay visible in local history; only user-supplied images
+        // are sent as input parts to chat-completion APIs.
+        val hasImages = conversationMessages.any { it.role == MessageRole.USER && it.attachments.isNotEmpty() }
         val chatMessagesWithSystem = buildList {
             if (systemPrompt.isNotBlank()) {
                 add(ChatMessageDto(role = MessageRole.SYSTEM.apiValue, content = systemPrompt))
@@ -299,7 +301,7 @@ class CoarenaNetworkClient @Inject constructor(
                             if (msg.content.isNotBlank()) {
                                 add(ResponsesInputPartDto(type = "input_text", text = msg.content))
                             }
-                            msg.attachments.forEach { attachment ->
+                            msg.attachments.filter { msg.role == MessageRole.USER }.forEach { attachment ->
                                 add(ResponsesInputPartDto(
                                     type = "input_image",
                                     imageUrl = imageDataUrl(attachment.localPath, attachment.mimeType),
