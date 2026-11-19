@@ -37,6 +37,8 @@ data class ChatUiState(
     val pendingAttachments: List<ChatAttachment> = emptyList(),
     val models: List<AiModel> = emptyList(),
     val selectedModelId: String? = null,
+    val selectedProviderConnectionId: String? = null,
+    val activeProviderConnectionId: String? = null,
     val isLoadingModels: Boolean = false,
     val modelsError: AppError? = null,
     val isSending: Boolean = false,
@@ -46,7 +48,7 @@ data class ChatUiState(
     val chatError: AppError? = null,
 ) {
     val selectedModel: AiModel?
-        get() = models.firstOrNull { it.id == selectedModelId }
+        get() = models.firstOrNull { it.id == selectedModelId && it.providerConnectionId == selectedProviderConnectionId }
 }
 
 /**
@@ -84,13 +86,10 @@ class ChatViewModel @Inject constructor(
             var hasInitialValue = false
             var previousId: String? = null
             coarenaRepository.activeProviderConnectionId.collect { id ->
-                if (hasInitialValue && id != previousId) {
-                    _uiState.update { it.copy(models = emptyList(), selectedModelId = null, modelsError = null) }
+                _uiState.update { it.copy(activeProviderConnectionId = id) }
+                if (!hasInitialValue || id != previousId) {
                     val preferred = coarenaRepository.getSelectedModelId()
-                    loadModels(preferredModelId = preferred)
-                } else if (!hasInitialValue && id != null) {
-                    val preferred = coarenaRepository.getSelectedModelId()
-                    loadModels(preferredModelId = preferred)
+                    loadModels(preferredModelId = preferred, preferredConnectionId = id)
                 }
                 hasInitialValue = true
                 previousId = id
@@ -189,41 +188,32 @@ class ChatViewModel @Inject constructor(
     }
 
     /** Loads or refreshes available models from `GET /models`. */
-    fun loadModels(preferredModelId: String? = null) {
+    fun loadModels(
+        preferredModelId: String? = null,
+        preferredConnectionId: String? = _uiState.value.activeProviderConnectionId,
+    ) {
         loadModelsJob?.cancel()
         loadModelsJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoadingModels = true, modelsError = null) }
-            val hasActiveProvider = coarenaRepository.activeProviderConnectionId.first() != null
-            coarenaRepository.fetchModels().fold(
+            coarenaRepository.fetchModelsFromAllProviders().fold(
                 onSuccess = { models ->
                     _uiState.update { state ->
-                        val candidate = state.selectedModelId ?: preferredModelId ?: if (hasActiveProvider) null else latestDefaultModelId
-                        val resolvedSelection = when {
-                            candidate != null && models.any { it.id == candidate } -> {
-                                modelAutoDefaultedFromFirst = false
-                                candidate
-                            }
-                            models.isNotEmpty() -> {
-                                modelAutoDefaultedFromFirst = candidate == null
-                                models.first().id
-                            }
-                            else -> candidate
-                        }
+                        val connectionId = preferredConnectionId
+                        val candidate = preferredModelId ?: if (connectionId == null) latestDefaultModelId else null
+                        val matching = models.firstOrNull { it.id == candidate && it.providerConnectionId == connectionId }
+                        val resolved = matching ?: models.firstOrNull { it.providerConnectionId == connectionId } ?: models.firstOrNull()
+                        modelAutoDefaultedFromFirst = resolved != null && matching == null && candidate == null
                         state.copy(
                             models = models,
-                            selectedModelId = resolvedSelection,
+                            selectedModelId = resolved?.id ?: candidate,
+                            selectedProviderConnectionId = resolved?.providerConnectionId ?: connectionId,
                             isLoadingModels = false,
                             modelsError = null,
                         )
                     }
                 },
                 onFailure = { throwable ->
-                    _uiState.update {
-                        it.copy(
-                            isLoadingModels = false,
-                            modelsError = throwable.toAppError(),
-                        )
-                    }
+                    _uiState.update { it.copy(isLoadingModels = false, modelsError = throwable.toAppError()) }
                 },
             )
         }
@@ -284,17 +274,15 @@ class ChatViewModel @Inject constructor(
     }
 
     /** Selects an AI model for subsequent messages and remembers it as default. */
-    fun selectModel(modelId: String) {
+    fun selectModel(model: AiModel) {
         hasUserExplicitlySelectedModel = true
         modelRestoredFromSession = false
         modelAutoDefaultedFromFirst = false
-        _uiState.update { it.copy(selectedModelId = modelId, chatError = null) }
+        _uiState.update { it.copy(selectedModelId = model.id, selectedProviderConnectionId = model.providerConnectionId, chatError = null) }
         viewModelScope.launch {
-            if (coarenaRepository.activeProviderConnectionId.first() == null) {
-                settingsRepository.saveDefaultModel(modelId)
-            } else {
-                coarenaRepository.saveSelectedModel(modelId)
-            }
+            coarenaRepository.activateProviderConnection(model.providerConnectionId)
+            if (model.providerConnectionId == null) settingsRepository.saveDefaultModel(model.id)
+            else coarenaRepository.saveSelectedModel(model.id)
         }
     }
 
