@@ -375,9 +375,11 @@ class ChatViewModel @Inject constructor(
         _uiState.update { state ->
             state.copy(
                 isSending = false,
-                messages = state.messages.map { msg ->
-                    if (msg.isStreaming) msg.copy(isStreaming = false) else msg
-                },
+                messages = state.messages
+                    .filterNot { it.isStreaming && it.modelId == "FLUX.1 Schnell" && it.content.isBlank() }
+                    .map { msg ->
+                        if (msg.isStreaming) msg.copy(isStreaming = false) else msg
+                    },
             )
         }
 
