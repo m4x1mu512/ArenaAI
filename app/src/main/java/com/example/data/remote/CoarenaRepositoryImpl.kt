@@ -65,7 +65,10 @@ class CoarenaRepositoryImpl @Inject constructor(
     }
 
     override suspend fun fetchModelsFromAllProviders(): Result<List<AiModel>> {
-        val connections = providerConnectionsRepository.connections.first().filter { it.isEnabled }
+        val activeConnectionId = providerConnectionsRepository.activeConnectionId.first()
+        val connections = providerConnectionsRepository.connections.first()
+            .filter { it.isEnabled }
+            .sortedByDescending { it.id == activeConnectionId }
         if (connections.isEmpty()) return fetchModels()
         val results = connections.mapNotNull { connection ->
             runCatching {
