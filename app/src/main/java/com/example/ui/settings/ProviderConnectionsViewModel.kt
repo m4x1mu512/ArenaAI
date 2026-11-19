@@ -21,6 +21,8 @@ import javax.inject.Inject
 
 data class ProviderConnectionsUiState(
     val connections: List<ProviderConnection> = emptyList(),
+    val connectionTestMessages: Map<String, String> = emptyMap(),
+    val connectionTestingIds: Set<String> = emptySet(),
     val activeConnectionId: String? = null,
     val selectedPresetId: String = ProviderCatalog.presets.first().id,
     val displayName: String = ProviderCatalog.presets.first().displayName,
@@ -234,6 +236,48 @@ class ProviderConnectionsViewModel @Inject constructor(
     }
 
     fun setLegacyCoarenaActive() = setActive(null)
+
+    fun testSavedConnection(connection: ProviderConnection) {
+        viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    connectionTestingIds = it.connectionTestingIds + connection.id,
+                    connectionTestMessages = it.connectionTestMessages + (connection.id to "Проверка подключения…"),
+                )
+            }
+            try {
+                val key = repository.getApiKey(connection)?.takeIf { it.isNotBlank() }
+                    ?: error("Для этого подключения не найден API Key. Откройте «Изменить» и сохраните ключ заново.")
+                val result = when (connection.providerId) {
+                    "anthropic" -> anthropicNetworkClient.fetchModels(connection.baseUrl, key)
+                    "cloudflare" -> {
+                        val accountId = Regex("/accounts/([^/]+)/ai/v1")
+                            .find(connection.baseUrl)?.groupValues?.getOrNull(1).orEmpty()
+                        networkClient.fetchCloudflareModels(accountId, key)
+                    }
+                    else -> networkClient.fetchModels(connection.baseUrl, key)
+                }
+                val models = result.getOrElse { throw it }
+                val message = if (models.isEmpty()) {
+                    "Подключение отвечает, но каталог моделей пуст."
+                } else {
+                    "Подключение работает. Найдено моделей: ${models.size}"
+                }
+                _state.update { it.copy(connectionTestMessages = it.connectionTestMessages + (connection.id to message)) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                _state.update {
+                    it.copy(
+                        connectionTestMessages = it.connectionTestMessages +
+                            (connection.id to (error.message?.take(500) ?: "Не удалось проверить подключение.")),
+                    )
+                }
+            } finally {
+                _state.update { it.copy(connectionTestingIds = it.connectionTestingIds - connection.id) }
+            }
+        }
+    }
 
     fun delete(id: String) {
         viewModelScope.launch {
