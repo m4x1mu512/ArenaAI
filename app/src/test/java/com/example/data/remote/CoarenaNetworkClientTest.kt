@@ -2,6 +2,8 @@ package com.example.data.remote
 
 import com.example.domain.model.ApiWireFormat
 import com.example.domain.model.AppError
+import com.example.domain.model.ChatAttachment
+import com.example.domain.model.ChatAttachmentKind
 import com.example.domain.model.ChatMessage
 import com.example.domain.model.ChatStreamEvent
 import com.example.domain.model.MessageRole
@@ -17,6 +19,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.File
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 
@@ -297,4 +300,102 @@ class CoarenaNetworkClientTest {
         assertFalse(diag.stream)
         assertEquals(200, diag.httpStatusCode)
     }
+    @Test
+    fun `sends image attachments as OpenAI compatible image url parts`() = runTest {
+        val imageFile = File.createTempFile("arena-image", ".jpg")
+        imageFile.writeBytes(byteArrayOf(1, 2, 3, 4, 5))
+        try {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setHeader("Content-Type", "application/json")
+                    .setBody("""{"choices":[{"message":{"role":"assistant","content":"I can see it"}}]}"""),
+            )
+
+            client.streamChatCompletion(
+                baseUrl = baseUrl,
+                apiKey = "sk-test-image-key",
+                modelId = "gpt-6-luna",
+                history = listOf(
+                    ChatMessage(
+                        id = "image-message",
+                        role = MessageRole.USER,
+                        content = "What is in this image?",
+                        attachments = listOf(
+                            ChatAttachment(
+                                id = "image-1",
+                                localPath = imageFile.absolutePath,
+                                mimeType = "image/jpeg",
+                                sizeBytes = imageFile.length(),
+                                kind = ChatAttachmentKind.USER_IMAGE,
+                            ),
+                        ),
+                    ),
+                ),
+                systemPrompt = "",
+                useStreaming = false,
+            ).toList()
+
+            val body = server.takeRequest().body.readUtf8()
+            assertTrue(body.contains(""""type":"image_url""""))
+            assertTrue(body.contains(""""url":"data:image/jpeg;base64,"""))
+            assertTrue(body.contains(""""text":"What is in this image?""""))
+        } finally {
+            imageFile.delete()
+        }
+    }
+
+
+    @Test
+    fun `adds Cloudflare AI Gateway ID header to streamed requests`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"),
+        )
+        client.streamChatCompletion(
+            baseUrl = baseUrl,
+            apiKey = "cf-test-token",
+            modelId = "@cf/meta/llama-test",
+            history = listOf(ChatMessage(id = "cf-1", role = MessageRole.USER, content = "Hi")),
+            systemPrompt = "",
+            requestHeaders = mapOf("cf-aig-gateway-id" to "default"),
+        ).toList()
+        assertEquals("default", server.takeRequest().getHeader("cf-aig-gateway-id"))
+    }
+
+    @Test
+    fun `generates image through Cloudflare FLUX native run endpoint`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"success":true,"result":{"image":"aGVsbG8="}}"""),
+        )
+
+        val accountId = "0123456789abcdef0123456789abcdef"
+        val result = client.generateCloudflareImage(
+            accountId = accountId,
+            apiKey = "cf-test-token",
+            prompt = "A lighthouse above the sea at sunset",
+            apiBaseUrl = server.url("/client/v4").toString().trimEnd('/'),
+        )
+
+        assertTrue(result.isSuccess)
+        assertEquals("aGVsbG8=", result.getOrThrow().base64Data)
+        assertEquals("image/jpeg", result.getOrThrow().mimeType)
+
+        val recorded = server.takeRequest()
+        assertEquals("POST", recorded.method)
+        assertEquals(
+            "/client/v4/accounts/$accountId/ai/run/@cf/black-forest-labs/flux-1-schnell",
+            recorded.path,
+        )
+        assertEquals("Bearer cf-test-token", recorded.getHeader("Authorization"))
+        val requestBody = recorded.body.readUtf8()
+        assertTrue(requestBody.contains(""""prompt":"A lighthouse above the sea at sunset""""))
+        assertTrue(requestBody.contains(""""steps":4"""))
+    }
+
 }

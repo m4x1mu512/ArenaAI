@@ -1,5 +1,8 @@
 package com.example
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import com.example.data.local.ImageAttachmentStore
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
@@ -23,9 +26,11 @@ import com.example.domain.model.LimitsInfo
 import com.example.domain.model.MessageRole
 import com.example.domain.model.RequestDiagnostic
 import com.example.domain.model.RequestHistoryItem
+import com.example.domain.model.ProviderConnection
 import com.example.domain.model.ThemeMode
 import com.example.domain.repository.ChatHistoryRepository
 import com.example.domain.repository.CoarenaRepository
+import com.example.domain.repository.ProviderConnectionsRepository
 import com.example.domain.repository.SettingsRepository
 import com.example.ui.chat.ChatScreen
 import com.example.ui.chat.ChatViewModel
@@ -101,7 +106,7 @@ class CoarenaUiTest {
             replyChunks = listOf("Hello ", "from Coarena!"),
         )
         val fakeHistory = FakeChatHistoryRepository()
-        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory)
+        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory, ImageAttachmentStore(ApplicationProvider.getApplicationContext<Context>()))
 
         composeRule.setContent {
             CoarenaTheme {
@@ -156,7 +161,7 @@ class CoarenaUiTest {
                 ),
             )
         }
-        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory)
+        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory, ImageAttachmentStore(ApplicationProvider.getApplicationContext<Context>()))
 
         composeRule.setContent {
             CoarenaTheme {
@@ -203,7 +208,7 @@ class CoarenaUiTest {
             chatError = AppError.Unauthorized("HTTP 401: Invalid key [REDACTED]"),
         )
         val fakeHistory = FakeChatHistoryRepository()
-        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory)
+        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory, ImageAttachmentStore(ApplicationProvider.getApplicationContext<Context>()))
 
         composeRule.setContent {
             CoarenaTheme {
@@ -233,7 +238,7 @@ class CoarenaUiTest {
             models = listOf(AiModel(id = "coarena-pro", displayName = "Coarena Pro")),
         )
         val fakeHistory = FakeChatHistoryRepository()
-        val viewModel = SettingsViewModel(fakeSettings, fakeRepo, fakeHistory)
+        val viewModel = SettingsViewModel(fakeSettings, fakeRepo, fakeHistory, FakeProviderConnectionsRepository())
         var navigatedToSetup = false
 
         composeRule.setContent {
@@ -241,6 +246,7 @@ class CoarenaUiTest {
                 SettingsScreen(
                     onBack = {},
                     onNavigateToSetup = { navigatedToSetup = true },
+                    showProviderConnections = false,
                     viewModel = viewModel,
                 )
             }
@@ -285,7 +291,7 @@ class CoarenaUiTest {
                 ),
             )
         }
-        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory)
+        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory, ImageAttachmentStore(ApplicationProvider.getApplicationContext<Context>()))
 
         composeRule.setContent {
             CoarenaTheme {
@@ -326,7 +332,7 @@ class CoarenaUiTest {
             responseModelId = "gpt-6-luna",
         )
         val fakeHistory = FakeChatHistoryRepository()
-        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory)
+        val viewModel = ChatViewModel(fakeRepo, fakeSettings, fakeHistory, ImageAttachmentStore(ApplicationProvider.getApplicationContext<Context>()))
 
         composeRule.setContent {
             CoarenaTheme {
@@ -350,6 +356,20 @@ class CoarenaUiTest {
 
         assertEquals("deepseek-v4-1-flash-1017", fakeRepo.lastSentModelId)
         composeRule.onNodeWithText("deepseek-v4-1-flash-1017 → gpt-6-luna").assertIsDisplayed()
+    }
+
+    private class FakeProviderConnectionsRepository : ProviderConnectionsRepository {
+        override val connections: Flow<List<ProviderConnection>> = MutableStateFlow(emptyList())
+        override val activeConnectionId: Flow<String?> = MutableStateFlow(null)
+        override val isInitialized: Flow<Boolean> = MutableStateFlow(true)
+
+        override suspend fun addConnection(connection: ProviderConnection, apiKey: String, makeActive: Boolean) = Unit
+        override suspend fun updateConnection(connection: ProviderConnection, replacementApiKey: String?) = Unit
+        override suspend fun setActiveConnection(connectionId: String?) = Unit
+        override suspend fun deleteConnection(connectionId: String) = Unit
+        override suspend fun clearAllConnections() = Unit
+        override suspend fun getActiveConnection(): ProviderConnection? = null
+        override suspend fun getApiKey(connection: ProviderConnection): String? = null
     }
 
     private class FakeSettingsRepository(

@@ -16,6 +16,7 @@ import com.example.domain.model.ThemeMode
 import com.example.domain.repository.ChatHistoryRepository
 import com.example.domain.repository.CoarenaRepository
 import com.example.domain.repository.SettingsRepository
+import com.example.domain.repository.ProviderConnectionsRepository
 import com.example.ui.common.toAppError
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
@@ -70,6 +71,7 @@ class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val coarenaRepository: CoarenaRepository,
     private val chatHistoryRepository: ChatHistoryRepository,
+    private val providerConnectionsRepository: ProviderConnectionsRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -78,6 +80,27 @@ class SettingsViewModel @Inject constructor(
     init {
         loadInitialState()
         observeDiagnostic()
+        observeProviderSelection()
+    }
+
+    private fun observeProviderSelection() {
+        viewModelScope.launch {
+            var initial = true
+            providerConnectionsRepository.activeConnectionId.collect { id ->
+                if (!initial) {
+                    val selectedModel = coarenaRepository.getSelectedModelId()
+                    _uiState.update { it.copy(defaultModelId = selectedModel) }
+                    val hasCredentials = if (id != null) {
+                        providerConnectionsRepository.getActiveConnection()
+                            ?.let { !providerConnectionsRepository.getApiKey(it).isNullOrBlank() } == true
+                    } else {
+                        !settingsRepository.getApiKey().isNullOrBlank()
+                    }
+                    if (hasCredentials) refreshAccountData()
+                }
+                initial = false
+            }
+        }
     }
 
     private fun observeDiagnostic() {
@@ -92,18 +115,26 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val settings = settingsRepository.settingsFlow.first()
             val hasKey = !settingsRepository.getApiKey().isNullOrBlank()
+            val activeConnection = providerConnectionsRepository.getActiveConnection()
+            val hasActiveKey = activeConnection?.let { !providerConnectionsRepository.getApiKey(it).isNullOrBlank() } == true
+            val activeProviderId = providerConnectionsRepository.activeConnectionId.first()
+            val selectedModelId = if (activeProviderId == null) {
+                settings.defaultModelId
+            } else {
+                coarenaRepository.getSelectedModelId()
+            }
             _uiState.update {
                 it.copy(
                     hasSavedApiKey = hasKey,
                     baseUrlInput = settings.baseUrl,
-                    defaultModelId = settings.defaultModelId,
+                    defaultModelId = selectedModelId,
                     themeMode = settings.themeMode,
                     useStreaming = settings.useStreaming,
                     wireFormat = settings.wireFormat,
                     lastDiagnostic = coarenaRepository.lastRequestDiagnostic.value,
                 )
             }
-            if (hasKey) {
+            if (hasKey || hasActiveKey) {
                 refreshAccountData()
             }
         }
@@ -153,7 +184,11 @@ class SettingsViewModel @Inject constructor(
     fun selectDefaultModel(modelId: String) {
         _uiState.update { it.copy(defaultModelId = modelId) }
         viewModelScope.launch {
-            settingsRepository.saveDefaultModel(modelId)
+            if (coarenaRepository.activeProviderConnectionId.first() == null) {
+                settingsRepository.saveDefaultModel(modelId)
+            } else {
+                coarenaRepository.saveSelectedModel(modelId)
+            }
         }
     }
 
@@ -338,6 +373,7 @@ class SettingsViewModel @Inject constructor(
     /** Clears all local credentials, preferences, and saved chat history and invokes [onDataCleared]. */
     fun clearAllLocalData(onDataCleared: () -> Unit) {
         viewModelScope.launch {
+            providerConnectionsRepository.clearAllConnections()
             settingsRepository.clearAllLocalData()
             chatHistoryRepository.clearAllHistory()
             _uiState.update { SettingsUiState() }

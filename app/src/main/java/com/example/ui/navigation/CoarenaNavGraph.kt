@@ -36,6 +36,11 @@ fun CoarenaNavGraph(
     ) {
         composable<SetupRoute> {
             SetupScreen(
+                onNavigateToSettings = {
+                    navController.navigate(SettingsRoute) {
+                        launchSingleTop = true
+                    }
+                },
                 onSetupComplete = {
                     navController.navigate(ChatRoute) {
                         popUpTo(SetupRoute) { inclusive = true }
@@ -58,6 +63,10 @@ fun CoarenaNavGraph(
         composable<SettingsRoute> {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
+                onProviderSaved = {
+                    navController.popBackStack()
+                    navController.navigate(ChatRoute) { launchSingleTop = true }
+                },
                 onNavigateToSetup = {
                     navController.navigate(SetupRoute) {
                         popUpTo(navController.graph.id) { inclusive = true }

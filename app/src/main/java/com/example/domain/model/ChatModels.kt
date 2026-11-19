@@ -9,12 +9,37 @@ enum class MessageRole(val apiValue: String) {
     ASSISTANT("assistant"),
 }
 
+/** Origin/purpose of an image attachment in a conversation. */
+enum class ChatAttachmentKind {
+    USER_IMAGE,
+    ASSISTANT_IMAGE,
+}
+
+/**
+ * Local image attachment associated with a chat message.
+ *
+ * [localPath] points to an app-private copy. The original picker URI should not be
+ * relied on for long-term history because its access grant may expire.
+ */
+data class ChatAttachment(
+    val id: String,
+    val localPath: String,
+    val mimeType: String,
+    val fileName: String? = null,
+    val sizeBytes: Long,
+    val width: Int? = null,
+    val height: Int? = null,
+    val kind: ChatAttachmentKind,
+    val createdAtMillis: Long = System.currentTimeMillis(),
+)
+
 /**
  * Single message item displayed in the active chat thread.
  *
  * @property id Stable unique identifier for Compose list keys.
  * @property role Participant role ([MessageRole.USER] or [MessageRole.ASSISTANT]).
  * @property content Text content of the message.
+ * @property attachments Local image attachments associated with this message.
  * @property timestampMillis Epoch timestamp in milliseconds.
  * @property modelId Optional model identifier that produced the assistant response.
  * @property isStreaming True while SSE chunks are still arriving.
@@ -30,21 +55,20 @@ data class ChatMessage(
     val isStreaming: Boolean = false,
     val isError: Boolean = false,
     val totalTokens: Int? = null,
+    val attachments: List<ChatAttachment> = emptyList(),
 )
 
 /**
  * AI model descriptor returned by `GET /api/v1/models`.
- *
- * @property id Model identifier sent in `chat/completions` requests.
- * @property displayName Human-friendly display name (falls back to [id]).
- * @property ownedBy Optional provider or organization name.
- * @property contextLength Optional maximum context window size.
  */
 data class AiModel(
     val id: String,
     val displayName: String = id,
     val ownedBy: String? = null,
     val contextLength: Int? = null,
+    val capabilities: ProviderCapabilities = ProviderCapabilities(),
+    val providerConnectionId: String? = null,
+    val providerDisplayName: String? = null,
 )
 
 /**

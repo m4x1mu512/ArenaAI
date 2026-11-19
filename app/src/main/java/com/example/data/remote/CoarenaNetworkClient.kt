@@ -7,6 +7,7 @@ import com.example.domain.model.AppError
 import com.example.domain.model.ChatMessage
 import com.example.domain.model.ChatStreamEvent
 import com.example.domain.model.CreditsInfo
+import com.example.domain.model.GeneratedImage
 import com.example.domain.model.LimitsInfo
 import com.example.domain.model.MessageRole
 import com.example.domain.model.RequestDiagnostic
@@ -23,12 +24,17 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Response
 import okhttp3.ResponseBody
+import java.io.File
+import java.util.Base64
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -49,6 +55,8 @@ class CoarenaNetworkClient @Inject constructor(
 
     private val _lastRequestDiagnostic = MutableStateFlow<RequestDiagnostic?>(null)
 
+    private companion object { const val MAX_MULTIMODAL_IMAGE_BYTES = 5L * 1024L * 1024L }
+
     /** Latest non-secret request diagnostic snapshot for troubleshooting. */
     val lastRequestDiagnostic: StateFlow<RequestDiagnostic?> = _lastRequestDiagnostic.asStateFlow()
 
@@ -58,6 +66,121 @@ class CoarenaNetworkClient @Inject constructor(
     suspend fun fetchModels(baseUrl: String, apiKey: String): Result<List<AiModel>> {
         return executeGet(baseUrl, "models", apiKey) { body ->
             parser.parseModels(body)
+        }
+    }
+
+    /**
+     * Fetches the account's Workers AI model catalog from Cloudflare.
+     * Third-party AI Gateway model IDs can be supplied manually in connection settings.
+     */
+    suspend fun fetchCloudflareModels(accountId: String, apiKey: String): Result<List<AiModel>> =
+        withContext(Dispatchers.IO) {
+            val trimmedAccountId = accountId.trim()
+            val trimmedKey = apiKey.trim()
+            if (!trimmedAccountId.matches(Regex("[A-Fa-f0-9]{32}"))) {
+                return@withContext Result.failure(IllegalArgumentException("Некорректный Cloudflare Account ID."))
+            }
+            if (trimmedKey.isEmpty()) {
+                return@withContext Result.failure(CoarenaApiException(AppError.MissingApiKey()))
+            }
+            val url = "https://api.cloudflare.com/client/v4/accounts/$trimmedAccountId/ai/models/search?task=text-generation&per_page=100&hide_experimental=true"
+            try {
+                val request = Request.Builder()
+                    .url(url)
+                    .header("Authorization", "Bearer $trimmedKey")
+                    .header("Accept", "application/json")
+                    .get()
+                    .build()
+                okHttpClient.newCall(request).execute().use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        return@withContext Result.failure(
+                            CoarenaApiException(mapHttpStatus(response.code, raw, trimmedKey)),
+                        )
+                    }
+                    runCatching { parser.parseModels(raw) }
+                        .fold(
+                            onSuccess = { Result.success(it) },
+                            onFailure = { Result.failure(mapException(it, trimmedKey)) },
+                        )
+                }
+            } catch (error: Exception) {
+                Result.failure(mapException(error, trimmedKey))
+            }
+        }
+
+    /**
+     * Generates an image using Cloudflare Workers AI FLUX.1 Schnell.
+     * The native /ai/run endpoint accepts a prompt and returns a base64 image payload.
+     */
+    suspend fun generateCloudflareImage(
+        accountId: String,
+        apiKey: String,
+        prompt: String,
+        apiBaseUrl: String = "https://api.cloudflare.com/client/v4",
+    ): Result<GeneratedImage> = withContext(Dispatchers.IO) {
+        val trimmedAccountId = accountId.trim()
+        val trimmedKey = apiKey.trim()
+        val trimmedPrompt = prompt.trim()
+        if (!trimmedAccountId.matches(Regex("[A-Fa-f0-9]{32}"))) {
+            return@withContext Result.failure(IllegalArgumentException("Некорректный Cloudflare Account ID."))
+        }
+        if (trimmedKey.isEmpty()) {
+            return@withContext Result.failure(CoarenaApiException(AppError.MissingApiKey()))
+        }
+        if (trimmedPrompt.isEmpty() || trimmedPrompt.length > 2048) {
+            return@withContext Result.failure(IllegalArgumentException("Описание изображения должно содержать от 1 до 2048 символов."))
+        }
+
+        val endpoint = "${apiBaseUrl.trimEnd('/')}/accounts/$trimmedAccountId/ai/run/@cf/black-forest-labs/flux-1-schnell"
+        try {
+            val requestBody = json.encodeToString(
+                kotlinx.serialization.json.buildJsonObject {
+                    put("prompt", kotlinx.serialization.json.JsonPrimitive(trimmedPrompt))
+                    put("steps", kotlinx.serialization.json.JsonPrimitive(4))
+                },
+            )
+            val request = Request.Builder()
+                .url(endpoint)
+                .header("Authorization", "Bearer $trimmedKey")
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json, image/jpeg")
+                .post(requestBody.toRequestBody("application/json".toMediaType()))
+                .build()
+
+            okHttpClient.newCall(request).execute().use { response ->
+                val body = response.body ?: return@withContext Result.failure(
+                    CoarenaApiException(AppError.SerializationError("Cloudflare returned an empty image response.")),
+                )
+                if (!response.isSuccessful) {
+                    val raw = body.string()
+                    return@withContext Result.failure(
+                        CoarenaApiException(mapHttpStatus(response.code, raw, trimmedKey)),
+                    )
+                }
+
+                val contentType = response.header("Content-Type").orEmpty()
+                    .substringBefore(';').ifBlank { "application/json" }
+                val generated = if (contentType.startsWith("image/")) {
+                    GeneratedImage(
+                        mimeType = contentType,
+                        base64Data = java.util.Base64.getEncoder().encodeToString(body.bytes()),
+                    )
+                } else {
+                    val raw = body.string()
+                    val root = json.parseToJsonElement(raw) as? JsonObject
+                        ?: throw IllegalStateException("Invalid Cloudflare image response")
+                    val result = root["result"] as? JsonObject
+                    val imageData = result?.get("image")?.jsonPrimitive?.contentOrNull
+                        ?: throw IllegalStateException(parser.parseErrorMessage(raw, trimmedKey).ifBlank {
+                            "Cloudflare response does not contain a generated image."
+                        })
+                    GeneratedImage(mimeType = "image/jpeg", base64Data = imageData)
+                }
+                Result.success(generated)
+            }
+        } catch (error: Exception) {
+            Result.failure(mapException(error, trimmedKey))
         }
     }
 
@@ -101,6 +224,7 @@ class CoarenaNetworkClient @Inject constructor(
         systemPrompt: String,
         useStreaming: Boolean = true,
         wireFormat: ApiWireFormat = ApiWireFormat.CHAT_COMPLETIONS,
+        requestHeaders: Map<String, String> = emptyMap(),
     ): Flow<ChatStreamEvent> = flow {
         val trimmedKey = apiKey.trim()
         if (trimmedKey.isEmpty()) {
@@ -116,31 +240,111 @@ class CoarenaNetworkClient @Inject constructor(
             .getOrThrow()
 
         val conversationMessages = history
-            .filter { !it.isError && it.content.isNotBlank() }
-            .map { msg -> ChatMessageDto(role = msg.role.apiValue, content = msg.content) }
-
+            .filter { !it.isError && (it.content.isNotBlank() || it.attachments.isNotEmpty()) }
+        // Generated assistant images stay visible in local history; only user-supplied images
+        // are sent as input parts to chat-completion APIs.
+        val hasImages = conversationMessages.any { it.role == MessageRole.USER && it.attachments.isNotEmpty() }
         val chatMessagesWithSystem = buildList {
             if (systemPrompt.isNotBlank()) {
                 add(ChatMessageDto(role = MessageRole.SYSTEM.apiValue, content = systemPrompt))
             }
-            addAll(conversationMessages)
+            addAll(conversationMessages.map { msg ->
+                ChatMessageDto(role = msg.role.apiValue, content = msg.content)
+            })
         }
 
         fun encodePayload(stream: Boolean): String {
+            if (!hasImages) {
+                return if (wireFormat == ApiWireFormat.RESPONSES) {
+                    json.encodeToString(
+                        ResponsesRequestDto(
+                            model = trimmedModelId,
+                            input = conversationMessages.map { ChatMessageDto(it.role.apiValue, it.content) },
+                            instructions = systemPrompt.takeIf { it.isNotBlank() },
+                            stream = stream,
+                        ),
+                    )
+                } else {
+                    json.encodeToString(
+                        ChatCompletionRequestDto(
+                            model = trimmedModelId,
+                            messages = chatMessagesWithSystem,
+                            stream = stream,
+                        ),
+                    )
+                }
+            }
+
+            var totalImageBytes = 0L
+            fun imageDataUrl(localPath: String, mimeType: String): String {
+                val file = File(localPath)
+                if (!file.isFile) throw IOException("An attached image is no longer available")
+                totalImageBytes += file.length()
+                if (totalImageBytes > MAX_MULTIMODAL_IMAGE_BYTES) {
+                    throw IOException("Attached images exceed the 5 MiB request limit")
+                }
+                val bytes = file.readBytes()
+                return "data:$mimeType;base64," + Base64.getEncoder().encodeToString(bytes)
+            }
+
             return if (wireFormat == ApiWireFormat.RESPONSES) {
+                val inputs = buildList {
+                    if (systemPrompt.isNotBlank()) {
+                        add(ResponsesInputMessageDto(
+                            role = MessageRole.SYSTEM.apiValue,
+                            content = listOf(ResponsesInputPartDto(type = "input_text", text = systemPrompt)),
+                        ))
+                    }
+                    conversationMessages.forEach { msg ->
+                        val parts = buildList {
+                            if (msg.content.isNotBlank()) {
+                                add(ResponsesInputPartDto(type = "input_text", text = msg.content))
+                            }
+                            msg.attachments.filter { msg.role == MessageRole.USER }.forEach { attachment ->
+                                add(ResponsesInputPartDto(
+                                    type = "input_image",
+                                    imageUrl = imageDataUrl(attachment.localPath, attachment.mimeType),
+                                ))
+                            }
+                        }
+                        add(ResponsesInputMessageDto(role = msg.role.apiValue, content = parts))
+                    }
+                }
                 json.encodeToString(
-                    ResponsesRequestDto(
+                    ResponsesMultimodalRequestDto(
                         model = trimmedModelId,
-                        input = conversationMessages,
-                        instructions = systemPrompt.takeIf { it.isNotBlank() },
+                        input = inputs,
+                        instructions = null,
                         stream = stream,
                     ),
                 )
             } else {
+                val messages = buildList {
+                    if (systemPrompt.isNotBlank()) {
+                        add(MultimodalChatMessageDto(
+                            role = MessageRole.SYSTEM.apiValue,
+                            content = listOf(MultimodalContentPartDto(type = "text", text = systemPrompt)),
+                        ))
+                    }
+                    conversationMessages.forEach { msg ->
+                        val parts = buildList {
+                            if (msg.content.isNotBlank()) {
+                                add(MultimodalContentPartDto(type = "text", text = msg.content))
+                            }
+                            msg.attachments.filter { msg.role == MessageRole.USER }.forEach { attachment ->
+                                add(MultimodalContentPartDto(
+                                    type = "image_url",
+                                    imageUrl = ImageUrlDto(imageDataUrl(attachment.localPath, attachment.mimeType)),
+                                ))
+                            }
+                        }
+                        add(MultimodalChatMessageDto(role = msg.role.apiValue, content = parts))
+                    }
+                }
                 json.encodeToString(
-                    ChatCompletionRequestDto(
+                    ChatCompletionMultimodalRequestDto(
                         model = trimmedModelId,
-                        messages = chatMessagesWithSystem,
+                        messages = messages,
                         stream = stream,
                     ),
                 )
@@ -161,6 +365,7 @@ class CoarenaNetworkClient @Inject constructor(
                 requestBodyJson = encodePayload(stream = false),
                 sentModelId = trimmedModelId,
                 wireFormat = wireFormat,
+                requestHeaders = requestHeaders,
             )
             nonStreamingResult.fold(
                 onSuccess = { completed -> emit(completed) },
@@ -183,6 +388,7 @@ class CoarenaNetworkClient @Inject constructor(
                 .header("Authorization", "Bearer $trimmedKey")
                 .header("Content-Type", "application/json")
                 .header("Accept", "text/event-stream")
+                .apply { requestHeaders.forEach { (name, value) -> header(name, value) } }
                 .post(requestBodyJson.toRequestBody("application/json".toMediaType()))
                 .build()
 
@@ -327,6 +533,7 @@ class CoarenaNetworkClient @Inject constructor(
                 requestBodyJson = encodePayload(stream = false),
                 sentModelId = trimmedModelId,
                 wireFormat = wireFormat,
+                requestHeaders = requestHeaders,
             )
             fallbackResult.fold(
                 onSuccess = { completed -> emit(completed) },
@@ -343,6 +550,7 @@ class CoarenaNetworkClient @Inject constructor(
         requestBodyJson: String,
         sentModelId: String,
         wireFormat: ApiWireFormat,
+        requestHeaders: Map<String, String> = emptyMap(),
     ): Result<ChatStreamEvent.Completed> = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
@@ -350,6 +558,7 @@ class CoarenaNetworkClient @Inject constructor(
                 .header("Authorization", "Bearer $apiKey")
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
+                .apply { requestHeaders.forEach { (name, value) -> header(name, value) } }
                 .post(requestBodyJson.toRequestBody("application/json".toMediaType()))
                 .build()
 

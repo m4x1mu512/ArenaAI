@@ -1,13 +1,16 @@
 package com.example.ui.chat
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.domain.model.AiModel
 import com.example.domain.model.AppError
+import com.example.domain.model.ChatAttachment
 import com.example.domain.model.ChatMessage
 import com.example.domain.model.ChatSession
 import com.example.domain.model.ChatStreamEvent
 import com.example.domain.model.MessageRole
+import com.example.data.local.ImageAttachmentStore
 import com.example.domain.repository.ChatHistoryRepository
 import com.example.domain.repository.CoarenaRepository
 import com.example.domain.repository.SettingsRepository
@@ -17,6 +20,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -30,15 +34,21 @@ data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val sessions: List<ChatSession> = emptyList(),
     val inputText: String = "",
+    val pendingAttachments: List<ChatAttachment> = emptyList(),
     val models: List<AiModel> = emptyList(),
     val selectedModelId: String? = null,
+    val selectedProviderConnectionId: String? = null,
+    val activeProviderConnectionId: String? = null,
     val isLoadingModels: Boolean = false,
     val modelsError: AppError? = null,
     val isSending: Boolean = false,
+    val canGenerateImages: Boolean = false,
+    val isImageGenerationMode: Boolean = false,
+    val isImageGenerationError: Boolean = false,
     val chatError: AppError? = null,
 ) {
     val selectedModel: AiModel?
-        get() = models.firstOrNull { it.id == selectedModelId }
+        get() = models.firstOrNull { it.id == selectedModelId && it.providerConnectionId == selectedProviderConnectionId }
 }
 
 /**
@@ -50,6 +60,7 @@ class ChatViewModel @Inject constructor(
     private val coarenaRepository: CoarenaRepository,
     private val settingsRepository: SettingsRepository,
     private val chatHistoryRepository: ChatHistoryRepository,
+    private val imageAttachmentStore: ImageAttachmentStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -66,6 +77,38 @@ class ChatViewModel @Inject constructor(
         observeHistorySessions()
         restoreLatestSessionIfEmpty()
         observeSettingsAndLoadModels()
+        observeActiveProvider()
+        observeImageGenerationAvailability()
+    }
+
+    private fun observeActiveProvider() {
+        viewModelScope.launch {
+            var hasInitialValue = false
+            var previousId: String? = null
+            coarenaRepository.activeProviderConnectionId.collect { id ->
+                _uiState.update { it.copy(activeProviderConnectionId = id) }
+                if (!hasInitialValue || id != previousId) {
+                    val preferred = coarenaRepository.getSelectedModelId()
+                    loadModels(preferredModelId = preferred, preferredConnectionId = id)
+                }
+                hasInitialValue = true
+                previousId = id
+            }
+        }
+    }
+
+    private fun observeImageGenerationAvailability() {
+        viewModelScope.launch {
+            coarenaRepository.activeProviderId.collect { providerId ->
+                _uiState.update { state ->
+                    val available = providerId == "cloudflare"
+                    state.copy(
+                        canGenerateImages = available,
+                        isImageGenerationMode = state.isImageGenerationMode && available,
+                    )
+                }
+            }
+        }
     }
 
     private fun observeHistorySessions() {
@@ -137,47 +180,41 @@ class ChatViewModel @Inject constructor(
                 previousBaseUrl = settings.baseUrl
 
                 if (credentialsChanged && settings.hasApiKey) {
-                    loadModels(preferredModelId = settings.defaultModelId)
+                    val preferredModel = coarenaRepository.getSelectedModelId()
+                    loadModels(preferredModelId = preferredModel)
                 }
             }
         }
     }
 
     /** Loads or refreshes available models from `GET /models`. */
-    fun loadModels(preferredModelId: String? = null) {
+    fun loadModels(
+        preferredModelId: String? = null,
+        preferredConnectionId: String? = _uiState.value.activeProviderConnectionId,
+    ) {
         loadModelsJob?.cancel()
         loadModelsJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoadingModels = true, modelsError = null) }
-            coarenaRepository.fetchModels().fold(
+            coarenaRepository.fetchModelsFromAllProviders().fold(
                 onSuccess = { models ->
                     _uiState.update { state ->
-                        val candidate = state.selectedModelId ?: preferredModelId ?: latestDefaultModelId
-                        val resolvedSelection = when {
-                            candidate != null && models.any { it.id == candidate } -> {
-                                modelAutoDefaultedFromFirst = false
-                                candidate
-                            }
-                            models.isNotEmpty() -> {
-                                modelAutoDefaultedFromFirst = candidate == null
-                                models.first().id
-                            }
-                            else -> candidate
-                        }
+                        val connectionId = preferredConnectionId
+                        val candidate = preferredModelId ?: if (connectionId == null) latestDefaultModelId else null
+                        val matching = models.firstOrNull { it.id == candidate && it.providerConnectionId == connectionId }
+                        val resolved = matching ?: models.firstOrNull { it.providerConnectionId == connectionId }
+                            ?: if (connectionId == null) models.firstOrNull() else null
+                        modelAutoDefaultedFromFirst = resolved != null && matching == null && candidate == null
                         state.copy(
                             models = models,
-                            selectedModelId = resolvedSelection,
+                            selectedModelId = resolved?.id ?: candidate,
+                            selectedProviderConnectionId = resolved?.providerConnectionId ?: connectionId,
                             isLoadingModels = false,
                             modelsError = null,
                         )
                     }
                 },
                 onFailure = { throwable ->
-                    _uiState.update {
-                        it.copy(
-                            isLoadingModels = false,
-                            modelsError = throwable.toAppError(),
-                        )
-                    }
+                    _uiState.update { it.copy(isLoadingModels = false, modelsError = throwable.toAppError()) }
                 },
             )
         }
@@ -188,14 +225,77 @@ class ChatViewModel @Inject constructor(
         _uiState.update { it.copy(inputText = text) }
     }
 
-    /** Selects an AI model for subsequent messages and remembers it as default. */
-    fun selectModel(modelId: String) {
-        hasUserExplicitlySelectedModel = true
-        modelRestoredFromSession = false
-        modelAutoDefaultedFromFirst = false
-        _uiState.update { it.copy(selectedModelId = modelId, chatError = null) }
+    /** Toggles native Cloudflare FLUX.1 image generation in the current chat. */
+    fun toggleImageGenerationMode() {
+        _uiState.update { state ->
+            if (!state.canGenerateImages) {
+                state.copy(chatError = AppError.Unknown("Для генерации изображений подключите Cloudflare AI в настройках."))
+            } else if (!state.isImageGenerationMode && state.pendingAttachments.isNotEmpty()) {
+                state.copy(chatError = AppError.Unknown("Перед включением генерации уберите прикрепленные изображения."))
+            } else {
+                state.copy(
+                    isImageGenerationMode = !state.isImageGenerationMode,
+                    isImageGenerationError = false,
+                    chatError = null,
+                )
+            }
+        }
+    }
+
+    /** Imports up to eight selected images into private storage for the pending message. */
+    fun addImages(uris: List<Uri>) {
         viewModelScope.launch {
-            settingsRepository.saveDefaultModel(modelId)
+            val current = _uiState.value.pendingAttachments
+            val remaining = (ImageAttachmentStore.MAX_IMAGES - current.size).coerceAtLeast(0)
+            if (remaining == 0) {
+                _uiState.update { it.copy(chatError = AppError.Unknown("You can attach up to 8 images")) }
+                return@launch
+            }
+            val imported = mutableListOf<ChatAttachment>()
+            try {
+                uris.take(remaining).forEach { uri ->
+                    imported += imageAttachmentStore.importImage(uri)
+                }
+                _uiState.update {
+                    it.copy(pendingAttachments = it.pendingAttachments + imported, chatError = null)
+                }
+            } catch (error: Throwable) {
+                imported.forEach(imageAttachmentStore::delete)
+                _uiState.update { it.copy(chatError = AppError.Unknown(error.message ?: "Unable to add image")) }
+            }
+        }
+    }
+
+    fun removePendingImage(attachmentId: String) {
+        val attachment = _uiState.value.pendingAttachments.firstOrNull { it.id == attachmentId } ?: return
+        imageAttachmentStore.delete(attachment)
+        _uiState.update { state ->
+            state.copy(pendingAttachments = state.pendingAttachments.filterNot { it.id == attachmentId })
+        }
+    }
+
+    /** Selects an AI model for subsequent messages and remembers it as default. */
+    fun selectModel(model: AiModel) {
+        viewModelScope.launch {
+            runCatching {
+                coarenaRepository.activateProviderConnection(model.providerConnectionId)
+                if (model.providerConnectionId == null) settingsRepository.saveDefaultModel(model.id)
+                else coarenaRepository.saveSelectedModel(model.id)
+            }.onSuccess {
+                hasUserExplicitlySelectedModel = true
+                modelRestoredFromSession = false
+                modelAutoDefaultedFromFirst = false
+                _uiState.update {
+                    it.copy(
+                        selectedModelId = model.id,
+                        selectedProviderConnectionId = model.providerConnectionId,
+                        activeProviderConnectionId = model.providerConnectionId,
+                        chatError = null,
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update { it.copy(chatError = AppError.Unknown(error.message ?: "Не удалось переключить провайдера.")) }
+            }
         }
     }
 
@@ -203,11 +303,15 @@ class ChatViewModel @Inject constructor(
     fun startNewChat() {
         streamJob?.cancel()
         streamJob = null
+        _uiState.value.pendingAttachments.forEach(imageAttachmentStore::delete)
         _uiState.update {
             it.copy(
                 currentSessionId = UUID.randomUUID().toString(),
                 messages = emptyList(),
+                pendingAttachments = emptyList(),
                 isSending = false,
+                isImageGenerationError = false,
+                isImageGenerationMode = false,
                 chatError = null,
             )
         }
@@ -217,6 +321,7 @@ class ChatViewModel @Inject constructor(
     fun selectSession(sessionId: String) {
         streamJob?.cancel()
         streamJob = null
+        _uiState.value.pendingAttachments.forEach(imageAttachmentStore::delete)
         hasUserExplicitlySelectedModel = true
         modelRestoredFromSession = false
         modelAutoDefaultedFromFirst = false
@@ -235,6 +340,7 @@ class ChatViewModel @Inject constructor(
                 state.copy(
                     currentSessionId = sessionId,
                     messages = savedMessages,
+                    pendingAttachments = emptyList(),
                     selectedModelId = updatedModel,
                     isSending = false,
                     chatError = null,
@@ -272,9 +378,11 @@ class ChatViewModel @Inject constructor(
         _uiState.update { state ->
             state.copy(
                 isSending = false,
-                messages = state.messages.map { msg ->
-                    if (msg.isStreaming) msg.copy(isStreaming = false) else msg
-                },
+                messages = state.messages
+                    .filterNot { it.isStreaming && it.modelId == "FLUX.1 Schnell" && it.content.isBlank() }
+                    .map { msg ->
+                        if (msg.isStreaming) msg.copy(isStreaming = false) else msg
+                    },
             )
         }
 
@@ -294,7 +402,7 @@ class ChatViewModel @Inject constructor(
 
     /** Dismisses the currently displayed chat error banner. */
     fun dismissError() {
-        _uiState.update { it.copy(chatError = null) }
+        _uiState.update { it.copy(chatError = null, isImageGenerationError = false) }
     }
 
     /** Sends [overrideText] or the current [ChatUiState.inputText] to the selected model. */
@@ -306,9 +414,19 @@ class ChatViewModel @Inject constructor(
         if (state.isSending) return
 
         val prompt = (overrideText ?: state.inputText).trim()
-        if (prompt.isEmpty()) return
+        if (prompt.isEmpty() && state.pendingAttachments.isEmpty()) return
 
-        val modelId = state.selectedModelId
+        val isImageGeneration = state.isImageGenerationMode
+        if (isImageGeneration && !state.canGenerateImages) {
+            _uiState.update { it.copy(chatError = AppError.Unknown("Для генерации изображений подключите Cloudflare AI в настройках.")) }
+            return
+        }
+        if (isImageGeneration && state.pendingAttachments.isNotEmpty()) {
+            _uiState.update { it.copy(chatError = AppError.Unknown("FLUX.1 Schnell пока создает изображения по текстовому описанию. Уберите вложения или отключите режим генерации.")) }
+            return
+        }
+
+        val modelId = if (isImageGeneration) "FLUX.1 Schnell" else state.selectedModelId
         if (modelId.isNullOrBlank()) {
             _uiState.update {
                 it.copy(chatError = AppError.Unknown("No model selected"))
@@ -323,6 +441,7 @@ class ChatViewModel @Inject constructor(
             role = MessageRole.USER,
             content = prompt,
             timestampMillis = now,
+            attachments = state.pendingAttachments,
         )
         val assistantPlaceholderId = UUID.randomUUID().toString()
         val assistantPlaceholder = ChatMessage(
@@ -341,7 +460,9 @@ class ChatViewModel @Inject constructor(
             it.copy(
                 messages = it.messages + userMessage + assistantPlaceholder,
                 inputText = if (overrideText == null) "" else it.inputText,
+                pendingAttachments = emptyList(),
                 isSending = true,
+                isImageGenerationError = false,
                 chatError = null,
             )
         }
@@ -355,14 +476,23 @@ class ChatViewModel @Inject constructor(
             )
         }
 
-        executeCompletionStream(
-            sessionId = sessionId,
-            sessionTitle = sessionTitle,
-            modelId = modelId,
-            requestHistory = requestHistory,
-            assistantPlaceholderId = assistantPlaceholderId,
-            systemPrompt = systemPrompt,
-        )
+        if (isImageGeneration) {
+            executeImageGeneration(
+                sessionId = sessionId,
+                sessionTitle = sessionTitle,
+                prompt = prompt,
+                assistantPlaceholderId = assistantPlaceholderId,
+            )
+        } else {
+            executeCompletionStream(
+                sessionId = sessionId,
+                sessionTitle = sessionTitle,
+                modelId = modelId,
+                requestHistory = requestHistory,
+                assistantPlaceholderId = assistantPlaceholderId,
+                systemPrompt = systemPrompt,
+            )
+        }
     }
 
     /** Retries the last user prompt if the previous request failed. */
@@ -400,6 +530,60 @@ class ChatViewModel @Inject constructor(
             assistantPlaceholderId = assistantPlaceholderId,
             systemPrompt = systemPrompt,
         )
+    }
+
+    private fun executeImageGeneration(
+        sessionId: String,
+        sessionTitle: String,
+        prompt: String,
+        assistantPlaceholderId: String,
+    ) {
+        streamJob = viewModelScope.launch {
+            try {
+                val generated = coarenaRepository.generateImage(prompt).getOrThrow()
+                val attachment = imageAttachmentStore.importGeneratedImage(generated)
+                var completedMessage: ChatMessage? = null
+                _uiState.update { current ->
+                    val updated = current.messages.map { message ->
+                        if (message.id == assistantPlaceholderId) {
+                            message.copy(
+                                content = "",
+                                attachments = listOf(attachment),
+                                modelId = "FLUX.1 Schnell",
+                                isStreaming = false,
+                                isError = false,
+                            ).also { completedMessage = it }
+                        } else {
+                            message
+                        }
+                    }
+                    current.copy(
+                        messages = updated,
+                        isSending = false,
+                        isImageGenerationError = false,
+                    )
+                }
+                completedMessage?.let { message ->
+                    chatHistoryRepository.saveMessage(
+                        sessionId = sessionId,
+                        sessionTitle = sessionTitle,
+                        modelId = "FLUX.1 Schnell",
+                        message = message,
+                    )
+                }
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _uiState.update { current ->
+                    current.copy(
+                        messages = current.messages.filterNot { it.id == assistantPlaceholderId },
+                        isSending = false,
+                        isImageGenerationError = true,
+                        chatError = error.toAppError(),
+                    )
+                }
+            }
+        }
     }
 
     private fun executeCompletionStream(

@@ -53,6 +53,7 @@ class CoarenaApiParser(
             is JsonArray -> root
             is JsonObject -> {
                 root["data"] as? JsonArray
+                    ?: root["result"] as? JsonArray
                     ?: root["models"] as? JsonArray
                     ?: root["items"] as? JsonArray
                     ?: emptyList()
@@ -67,7 +68,7 @@ class CoarenaApiParser(
                 }
                 is JsonObject -> {
                     val rawId = element.stringValue("id")?.trim()
-                    val fallbackModel = element.stringValue("model_id", "api_name", "slug", "model")?.trim()
+                    val fallbackModel = element.stringValue("model_id", "api_name", "slug", "model", "name")?.trim()
                     val id = when {
                         rawId != null && (rawId.all { it.isDigit() } || isUuid(rawId)) && fallbackModel != null -> fallbackModel
                         rawId != null -> rawId

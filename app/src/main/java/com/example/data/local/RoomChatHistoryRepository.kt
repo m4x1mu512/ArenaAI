@@ -1,9 +1,13 @@
 package com.example.data.local
 
+import com.example.data.local.db.ChatAttachmentEntity
 import com.example.data.local.db.ChatHistoryDao
 import com.example.data.local.db.ChatMessageEntity
+import com.example.data.local.db.ChatMessageWithAttachments
 import com.example.data.local.db.ChatSessionSummaryTuple
 import com.example.data.security.SecretRedactor
+import com.example.domain.model.ChatAttachment
+import com.example.domain.model.ChatAttachmentKind
 import com.example.domain.model.ChatMessage
 import com.example.domain.model.ChatSession
 import com.example.domain.model.MessageRole
@@ -29,8 +33,8 @@ class RoomChatHistoryRepository @Inject constructor(
     }
 
     override fun observeMessages(sessionId: String): Flow<List<ChatMessage>> {
-        return chatHistoryDao.observeMessages(sessionId).map { entities ->
-            entities.map { it.toDomain() }
+        return chatHistoryDao.observeMessagesWithAttachments(sessionId).map { messages ->
+            messages.map { it.toDomain() }
         }
     }
 
@@ -39,7 +43,7 @@ class RoomChatHistoryRepository @Inject constructor(
     }
 
     override suspend fun getMessages(sessionId: String): List<ChatMessage> {
-        return chatHistoryDao.getMessagesForSession(sessionId).map { it.toDomain() }
+        return chatHistoryDao.getMessagesWithAttachments(sessionId).map { it.toDomain() }
     }
 
     override suspend fun saveMessage(
@@ -64,12 +68,27 @@ class RoomChatHistoryRepository @Inject constructor(
             isError = message.isError,
             totalTokens = message.totalTokens,
         )
+        val attachmentEntities = message.attachments.map { attachment ->
+            ChatAttachmentEntity(
+                id = attachment.id,
+                messageId = message.id,
+                localPath = attachment.localPath,
+                mimeType = attachment.mimeType,
+                fileName = attachment.fileName,
+                sizeBytes = attachment.sizeBytes,
+                width = attachment.width,
+                height = attachment.height,
+                attachmentKind = attachment.kind.name,
+                createdAtMillis = attachment.createdAtMillis,
+            )
+        }
         chatHistoryDao.saveSessionAndMessage(
             sessionId = sessionId,
             fallbackTitle = safeTitle,
             modelId = modelId,
             updatedAtMillis = message.timestampMillis,
             message = entity,
+            attachments = attachmentEntities,
         )
     }
 
@@ -97,17 +116,32 @@ class RoomChatHistoryRepository @Inject constructor(
         )
     }
 
-    private fun ChatMessageEntity.toDomain(): ChatMessage {
-        val parsedRole = runCatching { MessageRole.valueOf(role) }.getOrDefault(MessageRole.ASSISTANT)
+    private fun ChatMessageWithAttachments.toDomain(): ChatMessage {
+        val parsedRole = runCatching { MessageRole.valueOf(message.role) }
+            .getOrDefault(MessageRole.ASSISTANT)
         return ChatMessage(
-            id = id,
+            id = message.id,
             role = parsedRole,
-            content = content,
-            timestampMillis = timestampMillis,
-            modelId = modelId,
+            content = message.content,
+            timestampMillis = message.timestampMillis,
+            modelId = message.modelId,
             isStreaming = false,
-            isError = isError,
-            totalTokens = totalTokens,
+            isError = message.isError,
+            totalTokens = message.totalTokens,
+            attachments = attachments.map { entity ->
+                ChatAttachment(
+                    id = entity.id,
+                    localPath = entity.localPath,
+                    mimeType = entity.mimeType,
+                    fileName = entity.fileName,
+                    sizeBytes = entity.sizeBytes,
+                    width = entity.width,
+                    height = entity.height,
+                    kind = runCatching { ChatAttachmentKind.valueOf(entity.attachmentKind) }
+                        .getOrDefault(ChatAttachmentKind.USER_IMAGE),
+                    createdAtMillis = entity.createdAtMillis,
+                )
+            },
         )
     }
 }

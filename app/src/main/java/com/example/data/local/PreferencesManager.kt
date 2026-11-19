@@ -10,6 +10,16 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.example.domain.model.ApiWireFormat
 import com.example.domain.model.AppSettings
 import com.example.domain.model.ThemeMode
+import com.example.domain.model.ProviderConnection
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -43,6 +53,29 @@ class PreferencesManager(
             useStreaming = useStreaming,
             wireFormat = wireFormat,
         )
+    }
+
+    /** Emits saved provider connections (metadata only; never API keys). */
+    val providerConnectionsFlow: Flow<List<ProviderConnection>> = context.coarenaDataStore.data.map { prefs ->
+        decodeConnections(prefs[KEY_PROVIDER_CONNECTIONS].orEmpty())
+    }
+
+    /** Emits the active provider connection ID. */
+    val activeProviderConnectionIdFlow: Flow<String?> = context.coarenaDataStore.data.map { prefs ->
+        prefs[KEY_ACTIVE_PROVIDER_CONNECTION]
+    }
+
+    suspend fun setProviderConnections(connections: List<ProviderConnection>) {
+        context.coarenaDataStore.edit { prefs ->
+            prefs[KEY_PROVIDER_CONNECTIONS] = encodeConnections(connections)
+        }
+    }
+
+    suspend fun setActiveProviderConnectionId(id: String?) {
+        context.coarenaDataStore.edit { prefs ->
+            if (id.isNullOrBlank()) prefs.remove(KEY_ACTIVE_PROVIDER_CONNECTION)
+            else prefs[KEY_ACTIVE_PROVIDER_CONNECTION] = id
+        }
     }
 
     /** Saves [baseUrl] to DataStore. */
@@ -99,11 +132,56 @@ class PreferencesManager(
         val wireFormat: ApiWireFormat,
     )
 
+    private fun encodeConnections(connections: List<ProviderConnection>): String =
+        buildJsonArray {
+            connections.forEach { connection ->
+                add(buildJsonObject {
+                    put("id", connection.id)
+                    put("providerId", connection.providerId)
+                    put("baseUrl", connection.baseUrl)
+                    put("credentialId", connection.credentialId)
+                    put("wireFormat", connection.wireFormat.name)
+                    put("isEnabled", connection.isEnabled)
+                    put("displayName", connection.displayName)
+                    connection.defaultModelId?.let { put("defaultModelId", it) }
+                    connection.gatewayId?.let { put("gatewayId", it) }
+                    connection.manualModelIds?.let { put("manualModelIds", it) }
+                })
+            }
+        }.toString()
+
+    private fun decodeConnections(raw: String): List<ProviderConnection> = runCatching {
+        Json.parseToJsonElement(raw).jsonArray.mapNotNull { element ->
+            val item = element.jsonObject
+            val id = item["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val providerId = item["providerId"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val baseUrl = item["baseUrl"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val credentialId = item["credentialId"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val wireFormat = item["wireFormat"]?.jsonPrimitive?.contentOrNull
+                ?.let { runCatching { ApiWireFormat.valueOf(it) }.getOrNull() }
+                ?: ApiWireFormat.CHAT_COMPLETIONS
+            ProviderConnection(
+                id = id,
+                providerId = providerId,
+                baseUrl = baseUrl,
+                credentialId = credentialId,
+                wireFormat = wireFormat,
+                isEnabled = item["isEnabled"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: true,
+                displayName = item["displayName"]?.jsonPrimitive?.contentOrNull ?: providerId,
+                defaultModelId = item["defaultModelId"]?.jsonPrimitive?.contentOrNull,
+                gatewayId = item["gatewayId"]?.jsonPrimitive?.contentOrNull,
+                manualModelIds = item["manualModelIds"]?.jsonPrimitive?.contentOrNull,
+            )
+        }
+    }.getOrDefault(emptyList())
+
     private companion object {
         val KEY_BASE_URL = stringPreferencesKey("base_url")
         val KEY_DEFAULT_MODEL = stringPreferencesKey("default_model_id")
         val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         val KEY_USE_STREAMING = booleanPreferencesKey("use_streaming")
         val KEY_WIRE_FORMAT = stringPreferencesKey("wire_format")
+        val KEY_PROVIDER_CONNECTIONS = stringPreferencesKey("provider_connections")
+        val KEY_ACTIVE_PROVIDER_CONNECTION = stringPreferencesKey("active_provider_connection")
     }
 }
