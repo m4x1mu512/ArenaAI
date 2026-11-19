@@ -78,7 +78,14 @@ class CoarenaRepositoryImpl @Inject constructor(
                         .filter(String::isNotBlank).forEach { add(it) }
                     active.defaultModelId?.takeIf { it.isNotBlank() }?.let(::add)
                 }.distinct()
-                manualIds.fold(models) { current, modelId ->
+                val chatManualIds = if (active.providerId == "cloudflare") {
+                    manualIds.filterNot {
+                        it.equals("@cf/black-forest-labs/flux-1-schnell", ignoreCase = true)
+                    }
+                } else {
+                    manualIds
+                }
+                chatManualIds.fold(models) { current, modelId ->
                     if (current.any { it.id == modelId }) current
                     else current + AiModel(id = modelId, displayName = modelId, ownedBy = "AI Gateway")
                 }
