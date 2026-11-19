@@ -91,6 +91,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.domain.model.AppError
 import com.example.domain.model.ChatMessage
+import com.example.domain.model.ChatAttachmentKind
 import com.example.domain.model.MessageRole
 import com.example.ui.components.ErrorBannerCard
 import coil.compose.AsyncImage
@@ -119,6 +120,7 @@ fun ChatScreen(
         onInputTextChange = viewModel::onInputTextChange,
         onPickImages = { imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
         onRemovePendingImage = viewModel::removePendingImage,
+        onToggleImageGenerationMode = viewModel::toggleImageGenerationMode,
         onSendMessage = { override -> viewModel.sendMessage(systemPrompt, override) },
         onStopGeneration = viewModel::stopGeneration,
         onSelectModel = viewModel::selectModel,
@@ -145,6 +147,7 @@ fun ChatScreenContent(
     onInputTextChange: (String) -> Unit,
     onPickImages: () -> Unit = {},
     onRemovePendingImage: (String) -> Unit = {},
+    onToggleImageGenerationMode: () -> Unit = {},
     onSendMessage: (String?) -> Unit,
     onStopGeneration: () -> Unit,
     onSelectModel: (String) -> Unit,
@@ -299,6 +302,26 @@ fun ChatScreenContent(
                                 .fillMaxWidth()
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                         ) {
+                            if (uiState.canGenerateImages) {
+                                AssistChip(
+                                    onClick = onToggleImageGenerationMode,
+                                    label = {
+                                        Text(
+                                            if (uiState.isImageGenerationMode) "FLUX.1 Schnell включён"
+                                            else "Создать изображение",
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Filled.AutoAwesome,
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    modifier = Modifier
+                                        .padding(bottom = 6.dp)
+                                        .testTag("image_generation_mode_button"),
+                                )
+                            }
                             if (uiState.pendingAttachments.isNotEmpty()) {
                                 LazyRow(
                                     contentPadding = PaddingValues(bottom = 8.dp),
@@ -373,7 +396,7 @@ fun ChatScreenContent(
                                 } else {
                                     FilledIconButton(
                                         onClick = {
-                                            if (uiState.selectedModelId.isNullOrBlank()) {
+                                            if (!uiState.isImageGenerationMode && uiState.selectedModelId.isNullOrBlank()) {
                                                 scope.launch {
                                                     snackbarHostState.showSnackbar(selectModelFirstMsg)
                                                 }
@@ -382,7 +405,7 @@ fun ChatScreenContent(
                                                 onSendMessage(null)
                                             }
                                         },
-                                        enabled = uiState.inputText.isNotBlank() || uiState.pendingAttachments.isNotEmpty(),
+                                        enabled = uiState.inputText.isNotBlank() || (!uiState.isImageGenerationMode && uiState.pendingAttachments.isNotEmpty()),
                                         modifier = Modifier
                                             .size(52.dp)
                                             .testTag("send_message_button"),
@@ -424,7 +447,7 @@ fun ChatScreenContent(
                                 uiState.chatError is AppError.MissingApiKey
                             ErrorBannerCard(
                                 error = uiState.chatError,
-                                onRetry = if (uiState.messages.any { it.role == MessageRole.USER }) {
+                                onRetry = if (!uiState.isImageGenerationError && uiState.messages.any { it.role == MessageRole.USER }) {
                                     onRetryLastMessage
                                 } else {
                                     null
@@ -445,7 +468,7 @@ fun ChatScreenContent(
                             EmptyChatState(
                                 selectedModelName = selectedBadgeText,
                                 onSelectPrompt = { prompt ->
-                                    if (uiState.selectedModelId.isNullOrBlank()) {
+                                    if (!uiState.isImageGenerationMode && uiState.selectedModelId.isNullOrBlank()) {
                                         scope.launch { snackbarHostState.showSnackbar(selectModelFirstMsg) }
                                         showModelSheet = true
                                     } else {
@@ -720,8 +743,14 @@ private fun ChatMessageBubble(
                         AsyncImage(
                             model = File(attachment.localPath),
                             contentDescription = attachment.fileName ?: "Attached image",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.size(176.dp).clip(RoundedCornerShape(12.dp)),
+                            contentScale = if (attachment.kind == ChatAttachmentKind.ASSISTANT_IMAGE) {
+                                ContentScale.Fit
+                            } else {
+                                ContentScale.Crop
+                            },
+                            modifier = Modifier
+                                .size(if (attachment.kind == ChatAttachmentKind.ASSISTANT_IMAGE) 240.dp else 176.dp)
+                                .clip(RoundedCornerShape(12.dp)),
                         )
                     }
                 }
