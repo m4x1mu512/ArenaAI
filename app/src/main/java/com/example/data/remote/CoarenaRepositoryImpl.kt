@@ -83,7 +83,7 @@ class CoarenaRepositoryImpl @Inject constructor(
                     else -> networkClient.fetchModels(connection.baseUrl, key)
                 }.getOrThrow()
                 val manualIds = buildList {
-                    connection.manualModelIds.orEmpty().split(',', '\\n', ';').map(String::trim)
+                    connection.manualModelIds.orEmpty().split(',', '\n', ';').map(String::trim)
                         .filter(String::isNotBlank).forEach(::add)
                     connection.defaultModelId?.takeIf(String::isNotBlank)?.let(::add)
                 }.distinct().let { ids ->
