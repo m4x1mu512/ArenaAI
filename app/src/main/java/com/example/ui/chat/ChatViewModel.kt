@@ -201,7 +201,8 @@ class ChatViewModel @Inject constructor(
                         val connectionId = preferredConnectionId
                         val candidate = preferredModelId ?: if (connectionId == null) latestDefaultModelId else null
                         val matching = models.firstOrNull { it.id == candidate && it.providerConnectionId == connectionId }
-                        val resolved = matching ?: models.firstOrNull { it.providerConnectionId == connectionId } ?: models.firstOrNull()
+                        val resolved = matching ?: models.firstOrNull { it.providerConnectionId == connectionId }
+                            ?: if (connectionId == null) models.firstOrNull() else null
                         modelAutoDefaultedFromFirst = resolved != null && matching == null && candidate == null
                         state.copy(
                             models = models,
@@ -275,14 +276,26 @@ class ChatViewModel @Inject constructor(
 
     /** Selects an AI model for subsequent messages and remembers it as default. */
     fun selectModel(model: AiModel) {
-        hasUserExplicitlySelectedModel = true
-        modelRestoredFromSession = false
-        modelAutoDefaultedFromFirst = false
-        _uiState.update { it.copy(selectedModelId = model.id, selectedProviderConnectionId = model.providerConnectionId, chatError = null) }
         viewModelScope.launch {
-            coarenaRepository.activateProviderConnection(model.providerConnectionId)
-            if (model.providerConnectionId == null) settingsRepository.saveDefaultModel(model.id)
-            else coarenaRepository.saveSelectedModel(model.id)
+            runCatching {
+                coarenaRepository.activateProviderConnection(model.providerConnectionId)
+                if (model.providerConnectionId == null) settingsRepository.saveDefaultModel(model.id)
+                else coarenaRepository.saveSelectedModel(model.id)
+            }.onSuccess {
+                hasUserExplicitlySelectedModel = true
+                modelRestoredFromSession = false
+                modelAutoDefaultedFromFirst = false
+                _uiState.update {
+                    it.copy(
+                        selectedModelId = model.id,
+                        selectedProviderConnectionId = model.providerConnectionId,
+                        activeProviderConnectionId = model.providerConnectionId,
+                        chatError = null,
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update { it.copy(chatError = AppError.Unknown(error.message ?: "Не удалось переключить провайдера.")) }
+            }
         }
     }
 
