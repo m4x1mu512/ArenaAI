@@ -103,6 +103,32 @@ fun ProviderConnectionsSection(
                             Text("Удалить", color = MaterialTheme.colorScheme.error)
                         }
                     }
+                    OutlinedButton(
+                        onClick = { viewModel.testSavedConnection(connection) },
+                        enabled = connection.id !in state.connectionTestingIds,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            if (connection.id in state.connectionTestingIds) {
+                                "Проверка подключения…"
+                            } else {
+                                "Проверить подключение"
+                            },
+                        )
+                    }
+                    state.connectionTestMessages[connection.id]?.let { message ->
+                        Text(
+                            message,
+                            color = if (message.startsWith("Подключение работает")) {
+                                MaterialTheme.colorScheme.primary
+                            } else if (message.startsWith("Проверка подключения")) {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
             }
         }
