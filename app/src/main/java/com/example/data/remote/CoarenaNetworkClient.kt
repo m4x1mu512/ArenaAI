@@ -332,7 +332,7 @@ class CoarenaNetworkClient @Inject constructor(
                             if (msg.content.isNotBlank()) {
                                 add(MultimodalContentPartDto(type = "text", text = msg.content))
                             }
-                            msg.attachments.forEach { attachment ->
+                            msg.attachments.filter { msg.role == MessageRole.USER }.forEach { attachment ->
                                 add(MultimodalContentPartDto(
                                     type = "image_url",
                                     imageUrl = ImageUrlDto(imageDataUrl(attachment.localPath, attachment.mimeType)),
