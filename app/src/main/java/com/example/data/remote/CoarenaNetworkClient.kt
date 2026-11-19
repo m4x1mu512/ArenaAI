@@ -7,6 +7,7 @@ import com.example.domain.model.AppError
 import com.example.domain.model.ChatMessage
 import com.example.domain.model.ChatStreamEvent
 import com.example.domain.model.CreditsInfo
+import com.example.domain.model.GeneratedImage
 import com.example.domain.model.LimitsInfo
 import com.example.domain.model.MessageRole
 import com.example.domain.model.RequestDiagnostic
@@ -23,6 +24,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -104,6 +109,81 @@ class CoarenaNetworkClient @Inject constructor(
                 Result.failure(mapException(error, trimmedKey))
             }
         }
+
+    /**
+     * Generates an image using Cloudflare Workers AI FLUX.1 Schnell.
+     * The native /ai/run endpoint accepts a prompt and returns a base64 image payload.
+     */
+    suspend fun generateCloudflareImage(
+        accountId: String,
+        apiKey: String,
+        prompt: String,
+        apiBaseUrl: String = "https://api.cloudflare.com/client/v4",
+    ): Result<GeneratedImage> = withContext(Dispatchers.IO) {
+        val trimmedAccountId = accountId.trim()
+        val trimmedKey = apiKey.trim()
+        val trimmedPrompt = prompt.trim()
+        if (!trimmedAccountId.matches(Regex("[A-Fa-f0-9]{32}"))) {
+            return@withContext Result.failure(IllegalArgumentException("Некорректный Cloudflare Account ID."))
+        }
+        if (trimmedKey.isEmpty()) {
+            return@withContext Result.failure(CoarenaApiException(AppError.MissingApiKey()))
+        }
+        if (trimmedPrompt.isEmpty() || trimmedPrompt.length > 2048) {
+            return@withContext Result.failure(IllegalArgumentException("Описание изображения должно содержать от 1 до 2048 символов."))
+        }
+
+        val endpoint = "${apiBaseUrl.trimEnd('/')}/accounts/$trimmedAccountId/ai/run/@cf/black-forest-labs/flux-1-schnell"
+        try {
+            val requestBody = json.encodeToString(
+                kotlinx.serialization.json.buildJsonObject {
+                    put("prompt", kotlinx.serialization.json.JsonPrimitive(trimmedPrompt))
+                    put("steps", kotlinx.serialization.json.JsonPrimitive(4))
+                },
+            )
+            val request = Request.Builder()
+                .url(endpoint)
+                .header("Authorization", "Bearer $trimmedKey")
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json, image/jpeg")
+                .post(requestBody.toRequestBody("application/json".toMediaType()))
+                .build()
+
+            okHttpClient.newCall(request).execute().use { response ->
+                val body = response.body ?: return@withContext Result.failure(
+                    CoarenaApiException(AppError.SerializationError("Cloudflare returned an empty image response.")),
+                )
+                if (!response.isSuccessful) {
+                    val raw = body.string()
+                    return@withContext Result.failure(
+                        CoarenaApiException(mapHttpStatus(response.code, raw, trimmedKey)),
+                    )
+                }
+
+                val contentType = response.header("Content-Type").orEmpty()
+                    .substringBefore(';').ifBlank { "application/json" }
+                val generated = if (contentType.startsWith("image/")) {
+                    GeneratedImage(
+                        mimeType = contentType,
+                        base64Data = java.util.Base64.getEncoder().encodeToString(body.bytes()),
+                    )
+                } else {
+                    val raw = body.string()
+                    val root = json.parseToJsonElement(raw) as? JsonObject
+                        ?: throw IllegalStateException("Invalid Cloudflare image response")
+                    val result = root["result"] as? JsonObject
+                    val imageData = result?.get("image")?.jsonPrimitive?.contentOrNull
+                        ?: throw IllegalStateException(parser.parseErrorMessage(raw, trimmedKey).ifBlank {
+                            "Cloudflare response does not contain a generated image."
+                        })
+                    GeneratedImage(mimeType = "image/jpeg", base64Data = imageData)
+                }
+                Result.success(generated)
+            }
+        } catch (error: Exception) {
+            Result.failure(mapException(error, trimmedKey))
+        }
+    }
 
     /**
      * Fetches account credits from `{baseUrl}/credits`.
