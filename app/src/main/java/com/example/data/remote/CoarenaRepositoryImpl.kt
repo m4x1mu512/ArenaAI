@@ -7,6 +7,7 @@ import com.example.domain.model.ChatMessage
 import com.example.domain.model.ChatStreamEvent
 import com.example.domain.model.ConnectionTestResult
 import com.example.domain.model.CreditsInfo
+import com.example.domain.model.GeneratedImage
 import com.example.domain.model.LimitsInfo
 import com.example.domain.model.RequestDiagnostic
 import com.example.domain.model.RequestHistoryItem
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -33,6 +35,12 @@ class CoarenaRepositoryImpl @Inject constructor(
 ) : CoarenaRepository {
 
     override val activeProviderConnectionId = providerConnectionsRepository.activeConnectionId
+    override val activeProviderId = combine(
+        providerConnectionsRepository.connections,
+        providerConnectionsRepository.activeConnectionId,
+    ) { connections, activeId ->
+        connections.firstOrNull { it.id == activeId && it.isEnabled }?.providerId
+    }
 
     override suspend fun getSelectedModelId(): String? {
         val active = providerConnectionsRepository.getActiveConnection()
@@ -152,6 +160,22 @@ class CoarenaRepositoryImpl @Inject constructor(
                 ),
             )
         }
+    }
+
+    override suspend fun generateImage(prompt: String): Result<GeneratedImage> {
+        val active = providerConnectionsRepository.getActiveConnection()
+            ?: return Result.failure(IllegalStateException("Для генерации изображений подключите Cloudflare AI в настройках."))
+        if (active.providerId != "cloudflare") {
+            return Result.failure(IllegalStateException("Генерация изображений FLUX.1 доступна через подключение Cloudflare AI."))
+        }
+        val key = providerConnectionsRepository.getApiKey(active)?.takeIf { it.isNotBlank() }
+            ?: return Result.failure(CoarenaApiException(AppError.MissingApiKey()))
+        val accountId = Regex("/accounts/([^/]+)/ai/v1").find(active.baseUrl)?.groupValues?.getOrNull(1).orEmpty()
+        return networkClient.generateCloudflareImage(
+            accountId = accountId,
+            apiKey = key,
+            prompt = prompt,
+        )
     }
 
     override suspend fun fetchCredits(): Result<CreditsInfo> {
