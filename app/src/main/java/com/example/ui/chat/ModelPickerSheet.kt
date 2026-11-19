@@ -52,8 +52,10 @@ import com.example.domain.model.AiModel
 fun ModelPickerSheet(
     models: List<AiModel>,
     selectedModelId: String?,
+    selectedProviderConnectionId: String?,
+    activeProviderConnectionId: String?,
     isLoading: Boolean,
-    onSelectModel: (String) -> Unit,
+    onSelectModel: (AiModel) -> Unit,
     onRefreshModels: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -62,16 +64,13 @@ fun ModelPickerSheet(
 
     val filteredModels = remember(models, searchQuery) {
         val q = searchQuery.trim()
-        if (q.isEmpty()) {
-            models
-        } else {
-            models.filter {
-                it.id.contains(q, ignoreCase = true) ||
-                    it.displayName.contains(q, ignoreCase = true) ||
-                    (it.ownedBy?.contains(q, ignoreCase = true) == true)
-            }
+        if (q.isEmpty()) models else models.filter {
+            it.id.contains(q, ignoreCase = true) || it.displayName.contains(q, ignoreCase = true) ||
+                (it.ownedBy?.contains(q, ignoreCase = true) == true) ||
+                (it.providerDisplayName?.contains(q, ignoreCase = true) == true)
         }
     }
+    val providerGroups = remember(filteredModels) { filteredModels.groupBy { it.providerConnectionId } }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -149,8 +148,17 @@ fun ModelPickerSheet(
                         .heightIn(max = 380.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(filteredModels, key = { it.id }) { model ->
-                        val isSelected = model.id == selectedModelId
+                    providerGroups.forEach { (connectionId, providerModels) ->
+                        item(key = "provider_" + (connectionId ?: "legacy")) {
+                            val providerName = providerModels.firstOrNull()?.providerDisplayName ?: "Coarena"
+                            val isActiveProvider = connectionId == activeProviderConnectionId
+                            Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(providerName, style = MaterialTheme.typography.titleMedium, color = if (isActiveProvider) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                                if (isActiveProvider) Text("АКТИВЕН", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        items(providerModels, key = { (it.providerConnectionId ?: "legacy") + "_" + it.id }) { model ->
+                        val isSelected = model.id == selectedModelId && model.providerConnectionId == selectedProviderConnectionId
                         Surface(
                             color = if (isSelected) {
                                 MaterialTheme.colorScheme.primaryContainer
@@ -162,7 +170,7 @@ fun ModelPickerSheet(
                                 .fillMaxWidth()
                                 .clip(MaterialTheme.shapes.medium)
                                 .clickable {
-                                    onSelectModel(model.id)
+                                    onSelectModel(model)
                                     onDismiss()
                                 }
                                 .testTag("model_item_${model.id}"),
@@ -225,6 +233,7 @@ fun ModelPickerSheet(
                                     )
                                 }
                             }
+                        }
                         }
                     }
                 }
