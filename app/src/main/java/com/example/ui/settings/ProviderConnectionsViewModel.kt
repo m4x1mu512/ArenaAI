@@ -9,6 +9,7 @@ import com.example.domain.model.ProviderConnection
 import com.example.domain.repository.ProviderConnectionsRepository
 import com.example.domain.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -117,25 +118,46 @@ class ProviderConnectionsViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            val existing = snapshot.editingConnectionId?.let { id ->
-                snapshot.connections.firstOrNull { it.id == id }
-            }
-            val effectiveKey = snapshot.apiKey.trim().ifBlank {
-                existing?.let { repository.getApiKey(it) }.orEmpty()
-            }
-            if (effectiveKey.isBlank()) {
-                _state.update { it.copy(error = if (snapshot.selectedPresetId == "cloudflare") "Укажите Cloudflare API Token." else "Укажите API Key.") }
-                return@launch
-            }
             _state.update { it.copy(isTesting = true, error = null, testModelCount = null) }
-            val result = when (snapshot.selectedPresetId) {
-                "anthropic" -> anthropicNetworkClient.fetchModels(snapshot.baseUrl.trim(), effectiveKey)
-                "cloudflare" -> networkClient.fetchCloudflareModels(snapshot.accountId, effectiveKey)
-                else -> networkClient.fetchModels(snapshot.baseUrl.trim(), effectiveKey)
-            }
-            _state.update {
-                if (result.isSuccess) it.copy(isTesting = false, testModelCount = result.getOrThrow().size)
-                else it.copy(isTesting = false, error = result.exceptionOrNull()?.message ?: "Не удалось подключиться.")
+            try {
+                val existing = snapshot.editingConnectionId?.let { id ->
+                    snapshot.connections.firstOrNull { it.id == id }
+                }
+                val effectiveKey = snapshot.apiKey.trim().ifBlank {
+                    existing?.let { repository.getApiKey(it) }.orEmpty()
+                }
+                check(effectiveKey.isNotBlank()) {
+                    if (snapshot.selectedPresetId == "cloudflare") {
+                        "Укажите Cloudflare API Token."
+                    } else {
+                        "Укажите API Key."
+                    }
+                }
+                val result = when (snapshot.selectedPresetId) {
+                    "anthropic" -> anthropicNetworkClient.fetchModels(snapshot.baseUrl.trim(), effectiveKey)
+                    "cloudflare" -> networkClient.fetchCloudflareModels(snapshot.accountId, effectiveKey)
+                    else -> networkClient.fetchModels(snapshot.baseUrl.trim(), effectiveKey)
+                }
+                val models = result.getOrElse { throw it }
+                _state.update {
+                    it.copy(
+                        isTesting = false,
+                        testModelCount = models.size,
+                        error = if (models.isEmpty()) {
+                            "Подключение отвечает, но список моделей пуст. Проверьте доступ к каталогу моделей или укажите ID моделей вручную."
+                        } else null,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                _state.update {
+                    it.copy(
+                        isTesting = false,
+                        testModelCount = null,
+                        error = error.message?.take(500) ?: "Не удалось проверить подключение.",
+                    )
+                }
             }
         }
     }
