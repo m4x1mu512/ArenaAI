@@ -354,7 +354,7 @@ fun ChatScreenContent(
                                 if (!uiState.isSending) {
                                     IconButton(
                                         onClick = onPickImages,
-                                        enabled = uiState.pendingAttachments.size < 8,
+                                        enabled = uiState.pendingAttachments.size < 8 && !uiState.isImageGenerationMode,
                                         modifier = Modifier.size(48.dp).testTag("attach_image_button"),
                                     ) {
                                         Icon(Icons.Filled.AttachFile, contentDescription = "Attach images")
