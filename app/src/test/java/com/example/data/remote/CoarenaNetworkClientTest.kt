@@ -364,4 +364,38 @@ class CoarenaNetworkClientTest {
         ).toList()
         assertEquals("default", server.takeRequest().getHeader("cf-aig-gateway-id"))
     }
+
+    @Test
+    fun `generates image through Cloudflare FLUX native run endpoint`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"success":true,"result":{"image":"aGVsbG8="}}"""),
+        )
+
+        val accountId = "0123456789abcdef0123456789abcdef"
+        val result = client.generateCloudflareImage(
+            accountId = accountId,
+            apiKey = "cf-test-token",
+            prompt = "A lighthouse above the sea at sunset",
+            apiBaseUrl = server.url("/client/v4").toString().trimEnd('/'),
+        )
+
+        assertTrue(result.isSuccess)
+        assertEquals("aGVsbG8=", result.getOrThrow().base64Data)
+        assertEquals("image/jpeg", result.getOrThrow().mimeType)
+
+        val recorded = server.takeRequest()
+        assertEquals("POST", recorded.method)
+        assertEquals(
+            "/client/v4/accounts/$accountId/ai/run/@cf/black-forest-labs/flux-1-schnell",
+            recorded.path,
+        )
+        assertEquals("Bearer cf-test-token", recorded.getHeader("Authorization"))
+        val requestBody = recorded.body.readUtf8()
+        assertTrue(requestBody.contains(""""prompt":"A lighthouse above the sea at sunset""""))
+        assertTrue(requestBody.contains(""""steps":4"""))
+    }
+
 }
