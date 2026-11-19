@@ -70,8 +70,11 @@ class CoarenaRepositoryImpl @Inject constructor(
             .filter { it.isEnabled }
             .sortedByDescending { it.id == activeConnectionId }
         if (connections.isEmpty()) return fetchModels()
-        val results = connections.mapNotNull { connection ->
-            runCatching {
+        val results = mutableListOf<List<AiModel>>()
+        val failures = mutableListOf<String>()
+        for (connection in connections) {
+            val providerName = ProviderCatalog.find(connection.providerId)?.displayName ?: connection.displayName
+            try {
                 val key = providerConnectionsRepository.getApiKey(connection)?.takeIf { it.isNotBlank() }
                     ?: throw CoarenaApiException(AppError.MissingApiKey())
                 val fetched = when (connection.providerId) {
@@ -81,7 +84,7 @@ class CoarenaRepositoryImpl @Inject constructor(
                         networkClient.fetchCloudflareModels(accountId, key)
                     }
                     else -> networkClient.fetchModels(connection.baseUrl, key)
-                }.getOrThrow()
+                }.getOrElse { throw it }
                 val manualIds = buildList {
                     connection.manualModelIds.orEmpty().split(',', '\n', ';').map(String::trim)
                         .filter(String::isNotBlank).forEach(::add)
@@ -95,13 +98,22 @@ class CoarenaRepositoryImpl @Inject constructor(
                     if (current.any { it.id == modelId }) current
                     else current + AiModel(id = modelId, displayName = modelId, ownedBy = "Manual")
                 }
-                val providerName = ProviderCatalog.find(connection.providerId)?.displayName ?: connection.displayName
-                merged.map { it.copy(providerConnectionId = connection.id, providerDisplayName = providerName) }
-            }.getOrNull()
+                results += merged.map { it.copy(providerConnectionId = connection.id, providerDisplayName = providerName) }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                val reason = error.message?.take(300) ?: error::class.simpleName ?: "Unknown error"
+                failures += "$providerName: $reason"
+            }
         }
-        if (results.isEmpty()) return Result.failure(
-            IllegalStateException("Не удалось загрузить модели ни одного подключённого провайдера. Проверьте API-ключи и адреса API.")
-        )
+        if (results.isEmpty()) {
+            val details = failures.joinToString(separator = "\n").ifBlank {
+                "Нет доступных подключений с включённым статусом."
+            }
+            return Result.failure(
+                IllegalStateException("Не удалось загрузить модели. Причины:\n$details")
+            )
+        }
         return Result.success(results.flatten())
     }
 
