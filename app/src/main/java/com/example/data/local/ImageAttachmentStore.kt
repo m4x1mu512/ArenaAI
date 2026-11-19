@@ -6,10 +6,12 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import com.example.domain.model.ChatAttachment
 import com.example.domain.model.ChatAttachmentKind
+import com.example.domain.model.GeneratedImage
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.Base64
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -72,6 +74,51 @@ class ImageAttachmentStore @Inject constructor(
         )
     }
 
+    /** Saves a generated base64 image in the same private store used by chat attachments. */
+    suspend fun importGeneratedImage(image: GeneratedImage): ChatAttachment = withContext(Dispatchers.IO) {
+        val mimeType = image.mimeType.lowercase().substringBefore(';')
+        require(mimeType in setOf("image/jpeg", "image/png", "image/webp")) {
+            "The image provider returned an unsupported image format"
+        }
+        val encoded = image.base64Data?.takeIf { it.isNotBlank() }
+            ?: throw IllegalArgumentException("The image provider returned no image data")
+        val bytes = try {
+            Base64.getDecoder().decode(encoded)
+        } catch (_: IllegalArgumentException) {
+            throw IllegalArgumentException("The image provider returned invalid image data")
+        }
+        require(bytes.isNotEmpty() && bytes.size <= MAX_GENERATED_FILE_BYTES) {
+            "Generated image is empty or too large"
+        }
+
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        require(bounds.outWidth > 0 && bounds.outHeight > 0) {
+            "The image provider returned an invalid image"
+        }
+
+        val id = UUID.randomUUID().toString()
+        val extension = when (mimeType) {
+            "image/png" -> "png"
+            "image/webp" -> "webp"
+            else -> "jpg"
+        }
+        val directory = File(context.filesDir, "chat-images").apply { mkdirs() }
+        val destination = File(directory, "$id.$extension")
+        destination.writeBytes(bytes)
+
+        ChatAttachment(
+            id = id,
+            localPath = destination.absolutePath,
+            mimeType = mimeType,
+            fileName = "generated-image.$extension",
+            sizeBytes = destination.length(),
+            width = bounds.outWidth,
+            height = bounds.outHeight,
+            kind = ChatAttachmentKind.ASSISTANT_IMAGE,
+        )
+    }
+
     fun delete(attachment: ChatAttachment) {
         val file = File(attachment.localPath).canonicalFile
         val root = File(context.filesDir, "chat-images").canonicalFile
@@ -82,6 +129,7 @@ class ImageAttachmentStore @Inject constructor(
         const val MAX_IMAGES = 8
         private const val MAX_DIMENSION = 2048
         private const val MAX_FILE_BYTES = 5L * 1024L * 1024L
+        private const val MAX_GENERATED_FILE_BYTES = 20 * 1024 * 1024
         private const val JPEG_QUALITY = 82
     }
 }
