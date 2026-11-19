@@ -5,6 +5,7 @@ import com.example.domain.model.ChatMessage
 import com.example.domain.model.ChatStreamEvent
 import com.example.domain.model.ConnectionTestResult
 import com.example.domain.model.CreditsInfo
+import com.example.domain.model.GeneratedImage
 import com.example.domain.model.LimitsInfo
 import com.example.domain.model.RequestDiagnostic
 import com.example.domain.model.RequestHistoryItem
@@ -19,6 +20,8 @@ import kotlinx.coroutines.flow.StateFlow
 interface CoarenaRepository {
     /** Current selected provider connection; null means the legacy Coarena setup is active. */
     val activeProviderConnectionId: Flow<String?> get() = flowOf(null)
+    /** Provider ID for the currently active connection, if any. */
+    val activeProviderId: Flow<String?> get() = flowOf(null)
 
     /** Persists a model selection for the active provider (or the legacy default). */
     suspend fun saveSelectedModel(modelId: String) {}
@@ -44,6 +47,10 @@ interface CoarenaRepository {
         history: List<ChatMessage>,
         systemPrompt: String,
     ): Flow<ChatStreamEvent>
+
+    /** Generates an image through the active provider's native image-generation API. */
+    suspend fun generateImage(prompt: String): Result<GeneratedImage> =
+        Result.failure(UnsupportedOperationException("Image generation is not available for this provider."))
 
     /** Fetches current account credit balance from `GET /credits`. */
     suspend fun fetchCredits(): Result<CreditsInfo>
