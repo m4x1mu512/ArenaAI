@@ -11,6 +11,7 @@ import com.example.domain.model.GeneratedImage
 import com.example.domain.model.LimitsInfo
 import com.example.domain.model.RequestDiagnostic
 import com.example.domain.model.RequestHistoryItem
+import com.example.domain.model.ProviderCatalog
 import com.example.domain.repository.CoarenaRepository
 import com.example.domain.repository.SettingsRepository
 import com.example.domain.repository.ProviderConnectionsRepository
@@ -58,6 +59,48 @@ class CoarenaRepositoryImpl @Inject constructor(
 
     override val lastRequestDiagnostic: StateFlow<RequestDiagnostic?> =
         networkClient.lastRequestDiagnostic
+
+    override suspend fun activateProviderConnection(connectionId: String?) {
+        providerConnectionsRepository.setActiveConnection(connectionId)
+    }
+
+    override suspend fun fetchModelsFromAllProviders(): Result<List<AiModel>> {
+        val connections = providerConnectionsRepository.connections.first().filter { it.isEnabled }
+        if (connections.isEmpty()) return fetchModels()
+        val results = connections.mapNotNull { connection ->
+            runCatching {
+                val key = providerConnectionsRepository.getApiKey(connection)?.takeIf { it.isNotBlank() }
+                    ?: throw CoarenaApiException(AppError.MissingApiKey())
+                val fetched = when (connection.providerId) {
+                    "anthropic" -> anthropicNetworkClient.fetchModels(connection.baseUrl, key)
+                    "cloudflare" -> {
+                        val accountId = Regex("/accounts/([^/]+)/ai/v1").find(connection.baseUrl)?.groupValues?.getOrNull(1).orEmpty()
+                        networkClient.fetchCloudflareModels(accountId, key)
+                    }
+                    else -> networkClient.fetchModels(connection.baseUrl, key)
+                }.getOrThrow()
+                val manualIds = buildList {
+                    connection.manualModelIds.orEmpty().split(',', '\\n', ';').map(String::trim)
+                        .filter(String::isNotBlank).forEach(::add)
+                    connection.defaultModelId?.takeIf(String::isNotBlank)?.let(::add)
+                }.distinct().let { ids ->
+                    if (connection.providerId == "cloudflare") ids.filterNot {
+                        it.equals("@cf/black-forest-labs/flux-1-schnell", ignoreCase = true)
+                    } else ids
+                }
+                val merged = manualIds.fold(fetched) { current, modelId ->
+                    if (current.any { it.id == modelId }) current
+                    else current + AiModel(id = modelId, displayName = modelId, ownedBy = "Manual")
+                }
+                val providerName = ProviderCatalog.find(connection.providerId)?.displayName ?: connection.displayName
+                merged.map { it.copy(providerConnectionId = connection.id, providerDisplayName = providerName) }
+            }.getOrNull()
+        }
+        if (results.isEmpty()) return Result.failure(
+            IllegalStateException("Не удалось загрузить модели ни одного подключённого провайдера. Проверьте API-ключи и адреса API.")
+        )
+        return Result.success(results.flatten())
+    }
 
     override suspend fun fetchModels(): Result<List<AiModel>> {
         val active = providerConnectionsRepository.getActiveConnection()
