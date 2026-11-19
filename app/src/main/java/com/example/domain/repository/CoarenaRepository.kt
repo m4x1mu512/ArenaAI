@@ -32,6 +32,12 @@ interface CoarenaRepository {
     /** Emits non-secret diagnostic details of the most recent chat completion request. */
     val lastRequestDiagnostic: StateFlow<RequestDiagnostic?>
 
+    /** Fetches models from every enabled saved provider connection. */
+    suspend fun fetchModelsFromAllProviders(): Result<List<AiModel>> = fetchModels()
+
+    /** Activates a saved provider connection before sending a request with its model. */
+    suspend fun activateProviderConnection(connectionId: String?) {}
+
     /** Fetches available models using the currently saved credentials. */
     suspend fun fetchModels(): Result<List<AiModel>>
 
