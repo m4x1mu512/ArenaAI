@@ -239,6 +239,8 @@ class ChatViewModel @Inject constructor(
         _uiState.update { state ->
             if (!state.canGenerateImages) {
                 state.copy(chatError = AppError.Unknown("Для генерации изображений подключите Cloudflare AI в настройках."))
+            } else if (!state.isImageGenerationMode && state.pendingAttachments.isNotEmpty()) {
+                state.copy(chatError = AppError.Unknown("Перед включением генерации уберите прикрепленные изображения."))
             } else {
                 state.copy(
                     isImageGenerationMode = !state.isImageGenerationMode,
