@@ -90,6 +90,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.domain.model.AppError
+import com.example.domain.model.AiModel
 import com.example.domain.model.ChatMessage
 import com.example.domain.model.ChatAttachmentKind
 import com.example.domain.model.MessageRole
@@ -150,7 +151,7 @@ fun ChatScreenContent(
     onToggleImageGenerationMode: () -> Unit = {},
     onSendMessage: (String?) -> Unit,
     onStopGeneration: () -> Unit,
-    onSelectModel: (String) -> Unit,
+    onSelectModel: (AiModel) -> Unit,
     onRefreshModels: () -> Unit,
     onNewChat: () -> Unit,
     onSelectSession: (String) -> Unit,
@@ -511,6 +512,8 @@ fun ChatScreenContent(
         ModelPickerSheet(
             models = uiState.models,
             selectedModelId = uiState.selectedModelId,
+            selectedProviderConnectionId = uiState.selectedProviderConnectionId,
+            activeProviderConnectionId = uiState.activeProviderConnectionId,
             isLoading = uiState.isLoadingModels,
             onSelectModel = onSelectModel,
             onRefreshModels = onRefreshModels,
